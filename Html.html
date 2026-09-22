@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soil Lab Data Processor | Ten Consultants Co., Ltd.</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Sarabun', 'system-ui', 'sans-serif'] },
+      colors: {
+        brand:  { 50:'#f2f6fa',100:'#e3ecf5',200:'#c3d6e9',300:'#94b5d6',400:'#5e8dbd',
+                  500:'#3d6fa3',600:'#2f5880',700:'#284867',800:'#243c55',900:'#213448' },
+        mint:   { 50:'#f0faf6',100:'#d8f3e8',200:'#b2e6d2',300:'#82d3b6',400:'#52b996' },
+        sand:   { 50:'#fdfaf3',100:'#faf2df',200:'#f3e3bd',300:'#e8cd8d' },
+        blush:  { 50:'#fdf4f4',100:'#fbe6e6',200:'#f5c9c9',300:'#e79c9c' }
+      }
+    }
+  }
+}
+</script>
+
+<style>
+  body{background:#f5f7fa;}
+  .tbl-cell input{width:100%;background:transparent;outline:none;text-align:center;font-size:.8rem;padding:.3rem .15rem;}
+  .tbl-cell input:focus{background:#fff;box-shadow:inset 0 0 0 2px #5e8dbd;border-radius:4px;}
+  .calc-cell{background:#e7f6ef;color:#1b6b4c;font-weight:600;}
+  .input-cell{background:#fffdf2;}
+  .link-cell{background:#eef4fb;color:#27496b;font-weight:600;}
+  .sticky-col{position:sticky;left:0;z-index:5;}
+  .fade-in{animation:fade .35s ease both;}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .dropzone.drag{background:#e3ecf5;border-color:#3d6fa3;}
+  ::-webkit-scrollbar{height:9px;width:9px}
+  ::-webkit-scrollbar-thumb{background:#c3d6e9;border-radius:6px}
+  @media print{.no-print{display:none!important}}
+</style>
+</head>
+
+<body class="font-sans text-slate-700">
+
+<!-- ================= HEADER ================= -->
+<header class="bg-[#213448] text-white shadow-lg">
+  <div class="max-w-[1500px] mx-auto px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <img src="data:image/jpeg;base64,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" class="w-11 h-11 rounded-xl object-cover border border-[#82d3b6]/40" alt="Ten Consultants Logo">
+      <div>
+        <h1 class="text-lg sm:text-xl font-bold tracking-wide">Soil Laboratory Data Processor</h1>
+        <p class="text-xs text-slate-300">Ten Consultants Co., Ltd. — Unit Weight / Water Content &amp; Sieve Analysis</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 no-print">
+      <button id="btnSettings" class="px-3 py-2 text-xs rounded-lg bg-white/10 hover:bg-white/25 transition">⚙ ตั้งค่า</button>
+      <button id="btnExport"   class="px-4 py-2 text-xs font-semibold rounded-lg bg-[#52b996] hover:bg-[#3ea281] transition shadow">⤓ Export Excel (Styled)</button>
+      <button id="btnSaveAll"  class="px-4 py-2 text-xs font-semibold rounded-lg bg-[#5e8dbd] hover:bg-[#4b79a6] transition shadow">☁ บันทึกลง Google Sheets</button>
+    </div>
+  </div>
+</header>
+
+<!-- ================= PROJECT INFO ================= -->
+<section class="max-w-[1500px] mx-auto px-5 mt-5">
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+    <h2 class="text-sm font-bold text-[#284867] mb-3">ข้อมูลโครงการ (Project Information)</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+      <label class="block"><span class="text-xs text-slate-500">PROJECT</span>
+        <input id="pjProject" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none" value="โครงการ รามคำแหง"></label>
+      <label class="block lg:col-span-2"><span class="text-xs text-slate-500">LOCATION</span>
+        <input id="pjLocation" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none" value="แขวงหัวหมาก เขตบางกะปิ กรุงเทพมหานคร"></label>
+      <label class="block"><span class="text-xs text-slate-500">JOB NO.</span>
+        <input id="pjJob" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none" value=""></label>
+      <label class="block"><span class="text-xs text-slate-500">BORING NO.</span>
+        <input id="pjBoring" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none" value="BH-1"></label>
+      <label class="block"><span class="text-xs text-slate-500">TESTED BY</span>
+        <input id="pjTested" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none"></label>
+      <label class="block"><span class="text-xs text-slate-500">CHECK BY</span>
+        <input id="pjCheck" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none"></label>
+      <label class="block"><span class="text-xs text-slate-500">DATE</span>
+        <input id="pjDate" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#94b5d6] outline-none" value="14/8/19"></label>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TABS ================= -->
+<nav class="max-w-[1500px] mx-auto px-5 mt-5 no-print">
+  <div class="flex gap-2 bg-white p-1.5 rounded-xl shadow-sm border border-slate-200 w-fit">
+    <button data-tab="uw"    class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">① Unit Weight &amp; Water Content</button>
+    <button data-tab="sieve" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">② Sieve Analysis</button>
+    <button data-tab="chart" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">③ Grain Size Curve</button>
+  </div>
+</nav>
+
+<!-- ============ TAB 1 : UNIT WEIGHT ============ -->
+<main id="tab-uw" class="tab-panel max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#284867] mb-1">อัปโหลดรูปฟอร์ม — Unit Weight</h3>
+        <p class="text-[11px] text-slate-500 mb-3">รองรับ JPG / PNG (สแกนฟอร์มลายมือ)</p>
+        <div id="dzUW" class="dropzone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+          <div class="text-3xl mb-1">🖼️</div>
+          <p class="text-xs text-slate-500">ลากไฟล์มาวาง หรือ <span class="text-[#3d6fa3] font-semibold">คลิกเลือกไฟล์</span></p>
+          <input id="fileUW" type="file" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="prevUW" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <button id="ocrUW" class="mt-3 w-full py-2.5 rounded-lg bg-[#284867] text-white text-xs font-semibold hover:bg-[#1c3548] transition">
+          ⚡ อ่านค่าจากรูปด้วย AI (OCR)
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2">
+        <h3 class="text-sm font-bold text-[#284867] mb-2">สูตรคำนวณ</h3>
+        <p><b>5.</b> V = πD²H / 4</p>
+        <p><b>8.</b> WT. OF SOIL = 6 − 7</p>
+        <p><b>9.</b> γt = 8 / 5</p>
+        <p class="pt-1 border-t"><b>14.</b> WT. OF WET SOIL = 12 − 11</p>
+        <p><b>15.</b> WT. OF DRYSOIL = 13 − 11</p>
+        <p><b>16.</b> WT. OF WATER = 12 − 13</p>
+        <p><b>17.</b> w = (16 / 15) × 100 %</p>
+      </div>
+    </div>
+    <div class="xl:col-span-3">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b bg-slate-50 no-print">
+          <h3 class="text-sm font-bold text-[#284867]">ตารางข้อมูล (แก้ไขได้)</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="filterUW" placeholder="🔍 กรอง Sample / Container No." class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:ring-2 focus:ring-[#94b5d6]">
+            <button id="addUW"  class="text-xs px-3 py-1.5 rounded-lg bg-[#e3ecf5] text-[#284867] font-semibold hover:bg-[#c3d6e9]">+ เพิ่มตัวอย่าง</button>
+            <button id="delUW"  class="text-xs px-3 py-1.5 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9]">− ลบตัวอย่างสุดท้าย</button>
+            <button id="clrUW"  class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table id="tblUW" class="min-w-full text-xs border-collapse"></table>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mt-5 p-5">
+        <h3 class="text-sm font-bold text-[#284867] mb-3">สรุปผล Water Content</h3>
+        <div id="sumUW" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ TAB 2 : SIEVE ============ -->
+<main id="tab-sieve" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#284867] mb-1">อัปโหลดรูปฟอร์ม — Sieve Analysis</h3>
+        <p class="text-[11px] text-slate-500 mb-3">แยกอิสระจากฟอร์ม Unit Weight</p>
+        <div id="dzSV" class="dropzone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+          <div class="text-3xl mb-1">🖼️</div>
+          <p class="text-xs text-slate-500">ลากไฟล์มาวาง หรือ <span class="text-[#3d6fa3] font-semibold">คลิกเลือกไฟล์</span></p>
+          <input id="fileSV" type="file" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="prevSV" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <button id="ocrSV" class="mt-3 w-full py-2.5 rounded-lg bg-[#284867] text-white text-xs font-semibold hover:bg-[#1c3548] transition">
+          ⚡ อ่านค่าจากรูปด้วย AI (OCR)
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2">
+        <h3 class="text-sm font-bold text-[#284867] mb-2">ตัวแปรที่ใช้</h3>
+        <p><b>a</b> = Wt. of container <span class="text-[#27496b]">(ลิงก์จากชีต 1)</span></p>
+        <p><b>b</b> = Wet soil + container <span class="text-[#27496b]">(ลิงก์จากชีต 1)</span></p>
+        <p><b>c</b> = Dry soil + container <span class="text-[#27496b]">(ลิงก์จากชีต 1)</span></p>
+        <p><b>d = c − a</b> : Mass of dry sample, gm.</p>
+        <p><b>e = (b − c) / d × 100</b> : Mass of dish gm. (w%)</p>
+        <p><b>f</b> = ค่า Retained (gm)</p>
+        <p><b>g = f − a</b> : cum. wt. retained</p>
+        <p><b>h = g / (d / 100)</b> : % retained</p>
+        <p><b>i = 100 − h</b> : % Finer</p>
+        <div class="pt-2 border-t flex flex-wrap gap-3 text-[11px]">
+          <span class="flex items-center gap-1"><i class="w-3 h-3 rounded bg-[#fffdf2] border border-slate-300 inline-block"></i> ค่ากรอก</span>
+          <span class="flex items-center gap-1"><i class="w-3 h-3 rounded bg-[#eef4fb] border border-slate-300 inline-block"></i> ลิงก์จากชีต 1</span>
+          <span class="flex items-center gap-1"><i class="w-3 h-3 rounded bg-[#e7f6ef] border border-slate-300 inline-block"></i> ค่าคำนวณ</span>
+        </div>
+      </div>
+    </div>
+    <div class="xl:col-span-3">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4 no-print">
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="filterSV" placeholder="🔍 กรอง Sample / Dish No." class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:ring-2 focus:ring-[#94b5d6]">
+          <select id="filterSieve" class="text-xs border border-slate-300 rounded-lg px-3 py-1.5 outline-none">
+            <option value="">— ทุกเบอร์ตะแกรง —</option>
+          </select>
+          <button id="syncSV" class="text-xs px-3 py-1.5 rounded-lg bg-[#e3ecf5] text-[#284867] font-semibold hover:bg-[#c3d6e9]">⟳ ดึงค่าจากชีต Unit Weight</button>
+          <button id="addSV"  class="text-xs px-3 py-1.5 rounded-lg bg-[#d8f3e8] text-[#1b6b4c] font-semibold hover:bg-[#b2e6d2]">+ เพิ่มตัวอย่าง</button>
+          <button id="delSV"  class="text-xs px-3 py-1.5 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9]">− ลบตัวอย่างสุดท้าย</button>
+          <button id="clrSV"  class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+        </div>
+      </div>
+      <div id="sieveCards" class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ TAB 3 : CHART ============ -->
+<main id="tab-chart" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <h3 class="text-sm font-bold text-[#284867]">Grain Size Distribution Curve (% Finer vs. Particle Size)</h3>
+    </div>
+    <div class="h-[460px]"><canvas id="gsdChart"></canvas></div>
+    <p class="text-[11px] text-slate-400 mt-3">มาตราส่วนแกน X เป็น Logarithmic (mm) ตามมาตรฐาน ASTM D6913</p>
+  </div>
+</main>
+
+<footer class="max-w-[1500px] mx-auto px-5 py-8 text-center text-[11px] text-slate-400">
+  Ten Consultants Co., Ltd. — Geotechnical Laboratory Module · ค่าที่คำนวณปัดทศนิยม 2 ตำแหน่ง
+</footer>
+
+<script>
+/* =====================================================================
+   CONFIG
+   ===================================================================== */
+const CFG = {
+  GAS_URL : localStorage.getItem('gasUrl')  || '',
+  GEM_KEY : localStorage.getItem('gemKey')  || ''
+};
+
+const SIEVES = [
+  {name:'3/4"', mm:19.0},{name:'3/8"', mm:9.5},{name:'#4', mm:4.75},
+  {name:'#10', mm:2.0},{name:'#40', mm:0.425},{name:'#100', mm:0.15},
+  {name:'#200', mm:0.075},{name:'PAN', mm:0.037}
+];
+
+const r2 = v => (v===''||v===null||v===undefined||isNaN(v)) ? null : Math.round(v*100)/100;
+const num = v => { const n = parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?null:n; };
+const show = v => (v===null||v===undefined) ? '' : v;
+
+/* =====================================================================
+   DATA MODEL
+   ===================================================================== */
+let UW = [
+  {no:'SS-1',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'M-63',a:19.30,b:109.76,c:84.14},
+  {no:'2',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ก-57',a:17.33,b:128.57,c:110.14},
+  {no:'3',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'อ-15',a:18.84,b:87.61, c:77.08},
+  {no:'4',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ฬ-48',a:19.04,b:75.20, c:63.87},
+  {no:'5',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ด-38',a:18.60,b:77.57, c:63.45},
+  {no:'6',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'จ-77',a:17.90,b:74.64, c:68.94},
+  {no:'7',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'H-93',a:19.40,b:83.44, c:76.41},
+  {no:'8',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'อ-1', a:16.86,b:94.79, c:77.59},
+  {no:'9',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'O-68',a:17.87,b:97.52, c:80.16}
+];
+
+let SV = [
+  {no:'1',dish:'M-63',depth:'',a:null,b:null,c:null,f:{'#10':19.67,'#40':22.26,'#100':31.24,'#200':40.43}},
+  {no:'2',dish:'ก-57',depth:'',a:null,b:null,c:null,f:{'#10':18.91,'#40':35.90,'#100':91.61,'#200':97.01}},
+  {no:'3',dish:'อ-15',depth:'',a:null,b:null,c:null,f:{'#10':18.99,'#40':31.88,'#100':64.07,'#200':65.27}},
+  {no:'4',dish:'ฬ-48',depth:'',a:null,b:null,c:null,f:{'#10':19.29,'#40':24.96,'#100':51.30,'#200':53.01}},
+  {no:'5',dish:'ด-38',depth:'',a:null,b:null,c:null,f:{'#10':19.73,'#40':25.45,'#100':52.23,'#200':54.66}},
+  {no:'6',dish:'จ-77',depth:'',a:null,b:null,c:null,f:{'#4':23.26,'#10':33.12,'#40':51.49,'#100':62.88,'#200':64.09}}
+];
+
+/* =====================================================================
+   CALCULATION ENGINE
+   ===================================================================== */
+function calcUW(s){
+  const D=num(s.D), H=num(s.H), sm=num(s.soilMold), m=num(s.mold);
+  const a=num(s.a), b=num(s.b), c=num(s.c);
+  const V   = (D!==null&&H!==null) ? r2(Math.PI*D*D*H/4) : null;
+  const W   = (sm!==null&&m!==null) ? r2(sm-m) : null;
+  const gt  = (W!==null&&V) ? r2(W/V) : null;
+  const wet = (b!==null&&a!==null) ? r2(b-a) : null;
+  const dry = (c!==null&&a!==null) ? r2(c-a) : null;
+  const wat = (wet!==null&&dry!==null) ? r2(wet-dry) : null;
+  const w   = (wat!==null&&dry) ? r2(wat/dry*100) : null;
+  return {V,W,gt,wet,dry,wat,w};
+}
+
+function calcSieve(s){
+  const a=num(s.a), b=num(s.b), c=num(s.c);
+  const d = (c!==null&&a!==null) ? r2(c-a) : null;            // Mass of dry sample, gm.
+  const e = (b!==null&&c!==null&&d) ? r2((b-c)/d*100) : null; // Mass of dish gm. (w%)
+  const rows = SIEVES.map(sv=>{
+    const f = num(s.f[sv.name]);
+    const g = (f!==null&&a!==null) ? r2(f-a) : null;          // cum. wt. retained
+    const h = (g!==null&&d) ? r2(g/(d/100)) : null;           // % retained
+    const i = (h!==null) ? r2(100-h) : null;                 // % Finer
+    return {sieve:sv.name, mm:sv.mm, f, g, h, i};
+  });
+  return {d,e,rows};
+}
+
+function syncSieveFromUW(silent){
+  let hit=0;
+  SV.forEach(s=>{
+    let src = UW.find(u=>u.cont && s.dish && String(u.cont).trim()===String(s.dish).trim());
+    if(!src) src = UW.find(u=>String(u.no).replace(/\D/g,'')===String(s.no).replace(/\D/g,''));
+    if(src){ s.a=src.a; s.b=src.b; s.c=src.c; hit++; }
+  });
+  renderSieve(); buildChart();
+  if(!silent) toast(`ลิงก์ค่าสำเร็จ ${hit}/${SV.length} ตัวอย่าง`,'success');
+}
+
+/* =====================================================================
+   RENDER : UNIT WEIGHT TABLE
+   ===================================================================== */
+const UW_ROWS = [
+  {n:1, label:'SAMPLE NO.', unit:'', key:'no', type:'input'},
+  {n:2, label:'DEPTH', unit:'(m.)', key:'depth', type:'input'},
+  {n:3, label:'DIAMETER OF SOIL, D', unit:'(cm.)', key:'D', type:'input'},
+  {n:4, label:'HEIGHT OF SOIL, H', unit:'(cm.)', key:'H', type:'input'},
+  {n:5, label:'VOL. OF SOIL, V = πD²H/4', unit:'(cm³)', key:'V', type:'calc'},
+  {n:6, label:'WT. OF SOIL + MOLD', unit:'(gm.)', key:'soilMold', type:'input'},
+  {n:7, label:'WT. OF MOLD', unit:'(gm.)', key:'mold', type:'input'},
+  {n:8, label:'WT. OF SOIL', unit:'(gm.)', key:'W', type:'calc'},
+  {n:9, label:'TOTAL UNIT WT., γt = 8/5', unit:'(t/m³)', key:'gt', type:'calc'},
+  {n:10,label:'CONTAINER NO.', unit:'', key:'cont', type:'input'},
+  {n:11,label:'WT. OF CONTAINER', unit:'(gm.)', key:'a', type:'input'},
+  {n:12,label:'WT. OF WET SOIL + CONTAINER', unit:'(gm.)', key:'b', type:'input'},
+  {n:13,label:'WT. OF DRY SOIL + CONTAINER', unit:'(gm.)', key:'c', type:'input'},
+  {n:14,label:'WT. OF WET SOIL, 12 − 11', unit:'(gm.)', key:'wet', type:'calc'},
+  {n:15,label:'WT. OF DRYSOIL, 13 − 11', unit:'(gm.)', key:'dry', type:'calc'},
+  {n:16,label:'WT. OF WATER, 12 − 13', unit:'(gm.)', key:'wat', type:'calc'},
+  {n:17,label:'WATER CONTENT, w = (16/15)100', unit:'%', key:'w', type:'calc'}
+];
+
+function visibleUW(){
+  const q = (document.getElementById('filterUW').value||'').trim().toLowerCase();
+  return UW.map((s,i)=>({s,i})).filter(({s})=> !q ||
+    String(s.no).toLowerCase().includes(q) || String(s.cont).toLowerCase().includes(q));
+}
+
+function renderUW(){
+  const list = visibleUW();
+  let html = `<thead><tr class="bg-[#213448] text-white">
+      <th class="sticky-col bg-[#213448] text-left px-3 py-2 w-8">#</th>
+      <th class="sticky-col bg-[#213448] text-left px-3 py-2 min-w-[240px]" style="left:2rem">รายการ</th>
+      <th class="px-2 py-2 w-16">หน่วย</th>`;
+  list.forEach(({i})=> html += `<th class="px-2 py-2 min-w-[92px]">Sample ${i+1}</th>`);
+  html += `</tr></thead><tbody>`;
+
+  UW_ROWS.forEach(row=>{
+    const zebra = row.n%2 ? 'bg-white' : 'bg-slate-50/60';
+    html += `<tr class="${zebra} border-b border-slate-100">
+      <td class="sticky-col ${row.n%2?'bg-white':'bg-slate-50'} px-3 py-1.5 text-slate-400 font-mono">${row.n}</td>
+      <td class="sticky-col ${row.n%2?'bg-white':'bg-slate-50'} px-3 py-1.5 font-medium text-slate-700" style="left:2rem">${row.label}</td>
+      <td class="px-2 py-1.5 text-center text-slate-400 text-[10px]">${row.unit}</td>`;
+    list.forEach(({s,i})=>{
+      const calc = calcUW(s);
+      if(row.type==='calc'){
+        html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[row.key])}</td>`;
+      }else{
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${show(s[row.key])}"></td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+  const tbl = document.getElementById('tblUW');
+  tbl.innerHTML = html;
+  tbl.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const {idx,key} = e.target.dataset;
+      UW[idx][key] = e.target.value;
+      refreshCalcOnly();
+    });
+    inp.addEventListener('change', ()=>{ syncSieveFromUW(true); });
+  });
+  renderSummary();
+}
+
+function refreshCalcOnly(){
+  const list = visibleUW();
+  const tbl  = document.getElementById('tblUW');
+  const rows = tbl.querySelectorAll('tbody tr');
+  UW_ROWS.forEach((row,ri)=>{
+    if(row.type!=='calc') return;
+    const cells = rows[ri].querySelectorAll('td');
+    list.forEach(({s},ci)=>{ cells[3+ci].textContent = show(calcUW(s)[row.key]); });
+  });
+  renderSummary();
+}
+
+function renderSummary(){
+  const box = document.getElementById('sumUW');
+  box.innerHTML = UW.map((s,i)=>{
+    const w = calcUW(s).w;
+    const tone = w===null ? 'bg-slate-100 text-slate-400'
+               : w>=30 ? 'bg-[#fbe6e6] text-[#a04040] border-[#f5c9c9]'
+               : w>=20 ? 'bg-[#faf2df] text-[#8a6a20] border-[#f3e3bd]'
+                       : 'bg-[#d8f3e8] text-[#1b6b4c] border-[#b2e6d2]';
+    return `<div class="rounded-xl border ${tone} px-3 py-3 text-center">
+      <div class="text-[10px] opacity-70">Sample ${s.no||i+1} · ${s.cont||'-'}</div>
+      <div class="text-xl font-bold mt-1">${w===null?'—':w}</div>
+      <div class="text-[10px]">% water content</div></div>`;
+  }).join('');
+}
+
+/* =====================================================================
+   RENDER : SIEVE CARDS
+   ===================================================================== */
+function renderSieve(){
+  const q  = (document.getElementById('filterSV').value||'').trim().toLowerCase();
+  const sf = document.getElementById('filterSieve').value;
+  const box = document.getElementById('sieveCards');
+
+  box.innerHTML = SV.map((s,idx)=>{
+    if(q && !(String(s.no).toLowerCase().includes(q)||String(s.dish).toLowerCase().includes(q))) return '';
+    const {d,e,rows} = calcSieve(s);
+    const body = rows.filter(r=> !sf || r.sieve===sf).map(r=>`
+      <tr class="border-b border-slate-100">
+        <td class="px-2 py-1.5 font-semibold text-slate-600">${r.sieve}</td>
+        <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${r.sieve}" value="${show(s.f[r.sieve])}"></td>
+        <td class="px-2 py-1.5 text-center text-slate-500">${show(r.g)}</td>
+        <td class="px-2 py-1.5 text-center calc-cell">${show(r.h)}</td>
+        <td class="px-2 py-1.5 text-center calc-cell font-bold">${show(r.i)}</td>
+      </tr>`).join('');
+
+    return `<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden fade-in">
+      <div class="px-4 py-2.5 bg-[#284867] text-white flex items-center justify-between">
+        <span class="text-sm font-bold">Sample No. ${s.no}</span>
+        <span class="text-[11px] opacity-80">Dish ${s.dish} · ${document.getElementById('pjBoring').value}</span>
+      </div>
+      <div class="px-4 py-3 bg-slate-50/70 space-y-2 text-[11px]">
+        <div class="grid grid-cols-3 gap-2">
+          <label class="flex items-center gap-1">Sample: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="no" value="${show(s.no)}"></label>
+          <label class="flex items-center gap-1">Dish: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="dish" value="${show(s.dish)}"></label>
+          <label class="flex items-center gap-1">Depth: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="depth" value="${show(s.depth)}"></label>
+        </div>
+        <div class="grid grid-cols-5 gap-1 pt-1 text-center">
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Container)</span><b class="text-xs">${show(s.a)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">b (Wet+Cont)</span><b class="text-xs">${show(s.b)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">c (Dry+Cont)</span><b class="text-xs">${show(s.c)}</b></div>
+          <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">d (Dry Sample)</span><b class="text-xs">${show(d)}</b></div>
+          <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">e (Mass Dish)</span><b class="text-xs">${show(e)}</b></div>
+        </div>
+      </div>
+      <table class="w-full text-xs">
+        <thead><tr class="bg-slate-100 text-slate-600 align-bottom">
+          <th class="px-2 py-2 text-left">Sieve No.</th>
+          <th class="px-2 py-2">Retained (gm)</th>
+          <th class="px-2 py-2">cum. wt. retained</th>
+          <th class="px-2 py-2">% retained</th>
+          <th class="px-2 py-2">% Finer</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('input[data-sieve]').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      SV[e.target.dataset.sv].f[e.target.dataset.sieve] = e.target.value;
+      renderSieve(); buildChart();
+      const sel = box.querySelector(`input[data-sv="${e.target.dataset.sv}"][data-sieve="${e.target.dataset.sieve}"]`);
+      if(sel){ sel.focus(); sel.setSelectionRange(sel.value.length, sel.value.length); }
+    });
+  });
+  box.querySelectorAll('.sv-meta').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      SV[e.target.dataset.sv][e.target.dataset.k] = e.target.value;
+      syncSieveFromUW(true);
+    });
+  });
+}
+
+/* =====================================================================
+   CHART
+   ===================================================================== */
+let chart=null;
+const PALETTE = ['#3d6fa3','#52b996','#e79c9c','#e8cd8d','#94b5d6','#82d3b6','#b58fbf','#d98f5a'];
+
+function buildChart(){
+  const ctx = document.getElementById('gsdChart');
+  const datasets = SV.map((s,i)=>{
+    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
+                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
+    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
+            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:4};
+  }).filter(d=>d.data.length);
+
+  if(chart) chart.destroy();
+  chart = new Chart(ctx,{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}, grid:{color:'#e9eef4'}},
+        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}, grid:{color:'#e9eef4'}}
+      },
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
+    }
+  });
+}
+
+/* =====================================================================
+   FILE UPLOAD & OCR
+   ===================================================================== */
+const IMG = {uw:[], sv:[]};
+function bindDrop(dzId, inputId, prevId, bucket){
+  const dz = document.getElementById(dzId), fi = document.getElementById(inputId);
+  dz.addEventListener('click', ()=>fi.click());
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.classList.remove('drag');}));
+  dz.addEventListener('drop', e=>handleFiles(e.dataTransfer.files, prevId, bucket));
+  fi.addEventListener('change', e=>handleFiles(e.target.files, prevId, bucket));
+}
+function handleFiles(files, prevId, bucket){
+  [...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    const rd = new FileReader();
+    rd.onload = ev=>{ IMG[bucket].push({name:f.name, data:ev.target.result}); renderPrev(prevId, bucket); };
+    rd.readAsDataURL(f);
+  });
+  toast('อัปโหลดรูปเรียบร้อย','success');
+}
+function renderPrev(prevId, bucket){
+  document.getElementById(prevId).innerHTML = IMG[bucket].map((im,i)=>`
+    <div class="relative group">
+      <img src="${im.data}" class="w-full h-16 object-cover rounded-lg border border-slate-200">
+      <button onclick="IMG['${bucket}'].splice(${i},1);renderPrev('${prevId}','${bucket}')" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#e79c9c] text-white text-[10px]">✕</button>
+    </div>`).join('');
+}
+
+/* =====================================================================
+   AI OCR (Gemini Vision) — อ่านค่าตัวเลขจากรูปภาพ/สแกนผลทดสอบ
+   ===================================================================== */
+async function callGemini(imgs, promptText){
+  if(!CFG.GEM_KEY) throw new Error('NO_KEY');
+  const parts = [{text: promptText}];
+  imgs.forEach(im=>{
+    const m = String(im.data).match(/^data:(.*?);base64,(.*)$/);
+    if(!m) return;
+    parts.push({inline_data:{mime_type:m[1], data:m[2]}});
+  });
+  const body = JSON.stringify({
+    contents:[{role:'user', parts}],
+    generationConfig:{ responseMimeType:'application/json', temperature:0 }
+  });
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${CFG.GEM_KEY}`;
+
+  const MAX_RETRIES = 3;
+  let lastErr;
+  for(let attempt=0; attempt<=MAX_RETRIES; attempt++){
+    let res;
+    try{
+      res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    }catch(netErr){
+      lastErr = new Error('เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+      if(attempt<MAX_RETRIES){ await new Promise(r=>setTimeout(r, 1000*(attempt+1))); continue; }
+      throw lastErr;
+    }
+    if(res.ok){
+      const data = await res.json();
+      const text = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
+      if(!text) throw new Error('ไม่ได้รับข้อมูลตอบกลับจาก AI');
+      let clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+      return JSON.parse(clean);
+    }
+    const status = res.status;
+    const t = await res.text();
+    if((status===503 || status===429 || status>=500) && attempt<MAX_RETRIES){
+      lastErr = new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
+      await new Promise(r=>setTimeout(r, 1500*(attempt+1)));
+      continue;
+    }
+    if(status===503){
+      throw new Error('เซิร์ฟเวอร์ Gemini กำลังมีผู้ใช้งานหนาแน่น (503) ลองใหม่อีกครั้งในอีกสักครู่');
+    }
+    throw new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
+  }
+  throw lastErr;
+}
+
+async function runOcrUW(){
+  if(!IMG.uw.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
+  if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNIT WEIGHT & WATER CONTENT', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try{
+    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ UNIT WEIGHT & WATER CONTENT DETERMINATION นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+
+สำหรับแต่ละตัวอย่าง (sample) ที่พบในรูป ให้อ่านค่าตามตัวเลขจริงที่ปรากฏในรูปเท่านั้น (ไม่ต้องคำนวณเอง ระบบจะคำนวณค่าที่เหลือ เช่น WT. OF WET SOIL (12-11), WT. OF DRYSOIL (13-11), WT. OF WATER (12-13), WATER CONTENT w=(16/15)*100 ให้อัตโนมัติ) แล้วสร้าง object ที่มี field:
+- "no": SAMPLE NO.
+- "depth": DEPTH (m.) ถ้ามี
+- "D": DIAMETER OF SOIL (cm.) ถ้ามี
+- "H": HEIGHT OF SOIL (cm.) ถ้ามี
+- "soilMold": WT. OF SOIL + MOLD (gm.) ถ้ามี
+- "mold": WT. OF MOLD (gm.) ถ้ามี
+- "cont": CONTAINER NO.
+- "a": 11. WT. OF CONTAINER (gm.)
+- "b": 12. WT. OF WET SOIL + CONTAINER (gm.)
+- "c": 13. WT. OF DRY SOIL + CONTAINER (gm.)
+
+ฟิลด์ตัวเลขที่ไม่มีในรูปให้เว้นว่างหรือ null ตอบกลับเป็น JSON array ล้วนๆ เช่น:
+[{"no":"1","cont":"M-63","a":19.30,"b":109.76,"c":84.14}]`;
+
+    const arr = await callGemini(IMG.uw, prompt);
+    if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+    const isBlankUW = u => !u.no && !u.cont && !u.depth && !u.D && !u.H && !u.soilMold && !u.mold &&
+      (u.a===''||u.a===null||u.a===undefined) && (u.b===''||u.b===null||u.b===undefined) && (u.c===''||u.c===null||u.c===undefined);
+    const blankQueue = UW.map((u,i)=>isBlankUW(u)?i:-1).filter(i=>i>=0);
+    arr.forEach(item=>{
+      let idx = UW.findIndex(u=>
+        (item.cont && u.cont && String(u.cont).trim()===String(item.cont).trim()) ||
+        (item.no && u.no && String(u.no).trim()===String(item.no).trim()));
+      if(idx<0 && blankQueue.length) idx = blankQueue.shift();
+      const merged = {
+        no:item.no ?? (idx>=0?UW[idx].no:String(UW.length+1)),
+        depth:item.depth ?? (idx>=0?UW[idx].depth:''),
+        D:item.D ?? (idx>=0?UW[idx].D:''),
+        H:item.H ?? (idx>=0?UW[idx].H:''),
+        soilMold:item.soilMold ?? (idx>=0?UW[idx].soilMold:''),
+        mold:item.mold ?? (idx>=0?UW[idx].mold:''),
+        cont:item.cont ?? (idx>=0?UW[idx].cont:''),
+        a:item.a ?? null, b:item.b ?? null, c:item.c ?? null
+      };
+      if(idx>=0) UW[idx] = merged; else UW.push(merged);
+    });
+    renderUW(); syncSieveFromUW(true);
+    Swal.close();
+    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+  }catch(err){
+    if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+  }
+}
+
+async function runOcrSV(){
+  if(!IMG.sv.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
+  if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try{
+    const sieveNames = SIEVES.map(s=>s.name).join(', ');
+    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ SIEVE ANALYSIS นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+
+สำหรับแต่ละตัวอย่าง (sample) ที่พบในรูป ให้อ่านเฉพาะค่า Retained (gm) ตามตัวเลขจริงในรูปแต่ละขนาดตะแกรง (ไม่ต้องคำนวณ cum. wt. retained, % retained หรือ % Finer เอง ระบบจะดึงค่า a,b,c จากตาราง UNIT WEIGHT ที่ลิงก์กันด้วย CONTAINER/DISH NO. แล้วคำนวณ d=c-a, g=f-a, h=g/(d/100), i=100-h ให้อัตโนมัติ) แล้วสร้าง object ที่มี field:
+- "no": Sample No.
+- "dish": Dish No.
+- "f": object ของค่า Retained (gm) แยกตามขนาดตะแกรง โดยใช้ key จากรายการนี้เท่านั้น (ใส่เฉพาะขนาดที่มีในรูป): ${sieveNames}
+
+ตอบกลับเป็น JSON array ล้วนๆ เช่น:
+[{"no":"1","dish":"M-63","f":{"#10":19.67,"#40":22.26,"#100":31.24,"#200":40.43}}]`;
+
+    const arr = await callGemini(IMG.sv, prompt);
+    if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+    const isBlankSV = s => !s.no && !s.dish && (!s.f || Object.keys(s.f).length===0);
+    const blankQueueSV = SV.map((s,i)=>isBlankSV(s)?i:-1).filter(i=>i>=0);
+    arr.forEach(item=>{
+      let idx = SV.findIndex(s=>
+        (item.dish && s.dish && String(s.dish).trim()===String(item.dish).trim()) ||
+        (item.no && s.no && String(s.no).trim()===String(item.no).trim()));
+      if(idx<0 && blankQueueSV.length) idx = blankQueueSV.shift();
+      if(idx>=0){
+        SV[idx].no   = item.no ?? SV[idx].no;
+        SV[idx].dish = item.dish ?? SV[idx].dish;
+        SV[idx].f    = {...SV[idx].f, ...(item.f||{})};
+      }else{
+        SV.push({no:item.no ?? String(SV.length+1), dish:item.dish ?? '', depth:'', a:null, b:null, c:null, f:item.f||{}});
+      }
+    });
+    syncSieveFromUW(true);
+    renderSieve(); buildChart();
+    Swal.close();
+    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+  }catch(err){
+    if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+  }
+}
+
+/* =====================================================================
+   EXPORT EXCEL (สร้างไฟล์หน้าเดียว พร้อมจัดสไตล์เส้นขอบและสีธีมวิศวกรรม)
+   ===================================================================== */
+function header(){
+  return {
+    project : document.getElementById('pjProject').value,
+    location: document.getElementById('pjLocation').value,
+    job     : document.getElementById('pjJob').value,
+    boring  : document.getElementById('pjBoring').value,
+    tested  : document.getElementById('pjTested').value,
+    check   : document.getElementById('pjCheck').value,
+    date    : document.getElementById('pjDate').value
+  };
+}
+
+function exportExcel(){
+  Swal.fire({title:'กำลังสร้างไฟล์ Excel พร้อมจัดสไตล์...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  setTimeout(()=>{
+    try {
+      const H = header();
+      
+      let html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head><meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; font-family: 'Sarabun', sans-serif; font-size: 10pt; }
+          th, td { border: .5pt solid #b0b0b0; padding: 5px 8px; vertical-align: middle; }
+          .hdr { background-color: #213448; color: #ffffff; font-weight: bold; text-align: center; }
+          .subhdr { background-color: #284867; color: #ffffff; font-weight: bold; text-align: center; }
+          .calc { background-color: #e7f6ef; color: #1b6b4c; font-weight: bold; text-align: center; }
+          .input { background-color: #fffdf2; text-align: center; }
+          .center { text-align: center; }
+        </style>
+        </head>
+        <body>
+      `;
+
+      // --- SECTION 1 : UNIT WEIGHT ---
+      html += `<h2>UNIT WEIGHT & WATER CONTENT DETERMINATION</h2>`;
+      html += `<table>`;
+      html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>JOB NO.:</b> ${H.job}</td></tr>`;
+      html += `<tr><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td><td colspan="3"><b>TESTED BY:</b> ${H.tested}</td><td colspan="2"><b>DATE:</b> ${H.date}</td></tr>`;
+      html += `<tr style="height:10px;"><td colspan="7"></td></tr>`;
+      
+      html += `<tr class="hdr"><td>รายการ</td>`;
+      UW.forEach((s,i)=> html += `<td>Sample ${i+1}</td>`);
+      html += `</tr>`;
+
+      UW_ROWS.forEach(row=>{
+        html += `<tr><td><b>${row.n}. ${row.label}</b> ${row.unit}</td>`;
+        UW.forEach(s=>{
+          const c = calcUW(s);
+          const val = row.type==='calc' ? (c[row.key]??'') : (s[row.key]??'');
+          const cls = row.type==='calc' ? 'calc' : 'input';
+          html += `<td class="${cls}">${val}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</table><br><br>`;
+
+      // --- SECTION 2 : SIEVE ANALYSIS ---
+      html += `<h2>SIEVE ANALYSIS</h2>`;
+      html += `<table>`;
+      html += `<tr><td colspan="8"><b>PROJECT:</b> ${H.project} | <b>Location:</b> ${H.location} | <b>Boring No.:</b> ${H.boring}</td></tr>`;
+      html += `<tr style="height:10px;"><td colspan="8"></td></tr>`;
+      html += `<tr class="subhdr"><td>Sample No.</td><td>Dish No.</td><td>Sieve No.</td><td>Size (mm)</td><td>Retained (gm)</td><td>cum. wt. retained</td><td>% retained</td><td>% Finer</td></tr>`;
+
+      SV.forEach(s=>{
+        const {rows} = calcSieve(s);
+        rows.forEach((r,k)=>{
+          html += `<tr>`;
+          if(k===0){
+            html += `<td rowspan="${rows.length}" class="center">${s.no}</td>`;
+            html += `<td rowspan="${rows.length}" class="center">${s.dish}</td>`;
+          }
+          html += `<td class="center">${r.sieve}</td>`;
+          html += `<td class="center">${r.mm}</td>`;
+          html += `<td class="input center">${r.f??''}</td>`;
+          html += `<td class="center">${r.g??''}</td>`;
+          html += `<td class="calc">${r.h??''}</td>`;
+          html += `<td class="calc"><b>${r.i??''}</b></td>`;
+          html += `</tr>`;
+        });
+      });
+
+      html += `</table></body></html>`;
+
+      const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const boringNo = document.getElementById('pjBoring').value || 'BH-1';
+      a.download = `Soil_Lab_Results_${boringNo}.xls`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      Swal.fire({icon:'success',title:'ดาวน์โหลดไฟล์สำเร็จ',text:a.download,timer:1500,showConfirmButton:false});
+    } catch(err) {
+      Swal.fire({icon:'error', title:'เกิดข้อผิดพลาด', text:err.message});
+    }
+  },200);
+}
+
+/* =====================================================================
+   SAVE TO GOOGLE SHEETS
+   ===================================================================== */
+async function saveAll(){
+  if(!CFG.GAS_URL){
+    return Swal.fire({icon:'warning',title:'ยังไม่ได้ตั้งค่า Web App URL',text:'โปรดใส่ URL ในเมนูตั้งค่า',confirmButtonColor:'#3d6fa3'});
+  }
+  Swal.fire({title:'กำลังบันทึกข้อมูล...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try{
+    const H = header();
+    const payload = {
+      header: H,
+      unitWeight: UW.map(s=>{
+        const c = calcUW(s);
+        return {
+          sampleNo:s.no, depth:s.depth, D:s.D, H:s.H, V:c.V,
+          soilMold:s.soilMold, mold:s.mold, W:c.W, gt:c.gt,
+          cont:s.cont, a:s.a, b:s.b, c:s.c,
+          wet:c.wet, dry:c.dry, wat:c.wat, waterContent:c.w
+        };
+      }),
+      sieve: SV.flatMap(s=>{
+        const {d,e,rows} = calcSieve(s);
+        return rows.map(r=>({
+          sampleNo:s.no, dishNo:s.dish, depth:s.depth,
+          a:s.a, b:s.b, c:s.c, d, e,
+          sieveNo:r.sieve, sieveSize:r.mm, f:r.f, g:r.g,
+          percentRetained:r.h, percentFiner:r.i
+        }));
+      })
+    };
+    const res = await fetch(CFG.GAS_URL, {method:'POST', redirect:'follow', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload)});
+    const j = await res.json();
+    if(j.status!=='success') throw new Error(j.message);
+    Swal.fire({icon:'success',title:'บันทึกสำเร็จ',confirmButtonColor:'#52b996'});
+  }catch(err){
+    Swal.fire({icon:'error',title:'บันทึกไม่สำเร็จ',text:err.message});
+  }
+}
+
+/* =====================================================================
+   UI HELPERS & INIT
+   ===================================================================== */
+const toast = (msg,icon='success')=>Swal.fire({toast:true,position:'top-end',icon,title:msg,showConfirmButton:false,timer:2000});
+function switchTab(name){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    const on = b.dataset.tab===name;
+    b.className = 'tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition ' + (on ? 'bg-[#284867] text-white shadow' : 'text-slate-500 hover:bg-slate-100');
+  });
+  if(name==='chart') buildChart();
+}
+
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function openSettings(note){
+  Swal.fire({
+    title:'ตั้งค่าการเชื่อมต่อ',
+    html:`
+      ${note ? `<div class="text-xs text-[#a04040] mb-2 text-left">${note}</div>` : ''}
+      <input id="swGas" class="swal2-input !text-xs" placeholder="Google Apps Script Web App URL" value="${CFG.GAS_URL}">
+      <input id="swGem" class="swal2-input !text-xs" placeholder="Gemini API Key (สำหรับปุ่ม OCR)" value="${CFG.GEM_KEY}">
+      <div class="text-[10px] text-slate-400 mt-1">ขอ Gemini API Key ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น</div>
+    `,
+    confirmButtonText:'บันทึก', confirmButtonColor:'#3d6fa3',
+    preConfirm:()=>({ gas: document.getElementById('swGas').value.trim(), gem: document.getElementById('swGem').value.trim() })
+  }).then(r=>{
+    if(r.isConfirmed){
+      CFG.GAS_URL=r.value.gas; localStorage.setItem('gasUrl',CFG.GAS_URL);
+      CFG.GEM_KEY=r.value.gem; localStorage.setItem('gemKey',CFG.GEM_KEY);
+      toast('บันทึกแล้ว');
+    }
+  });
+}
+function clearAllUW(){
+  Swal.fire({
+    icon:'warning', title:'ล้างข้อมูล Unit Weight ทั้งหมด?',
+    text:'จะลบทั้งค่าที่คีย์เองและค่าที่อ่านจาก OCR รวมถึงรูปภาพที่อัปโหลดไว้ทั้งหมด',
+    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+  }).then(r=>{
+    if(!r.isConfirmed) return;
+    UW = [{no:'',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}];
+    IMG.uw = [];
+    document.getElementById('fileUW').value = '';
+    renderPrev('prevUW','uw');
+    renderUW();
+    syncSieveFromUW(true);
+    toast('ล้างข้อมูล Unit Weight แล้ว');
+  });
+}
+function clearAllSV(){
+  Swal.fire({
+    icon:'warning', title:'ล้างข้อมูล Sieve Analysis ทั้งหมด?',
+    text:'จะลบทั้งค่าที่คีย์เองและค่าที่อ่านจาก OCR รวมถึงรูปภาพที่อัปโหลดไว้ทั้งหมด',
+    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+  }).then(r=>{
+    if(!r.isConfirmed) return;
+    SV = [{no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}];
+    IMG.sv = [];
+    document.getElementById('fileSV').value = '';
+    renderPrev('prevSV','sv');
+    renderSieve();
+    buildChart();
+    toast('ล้างข้อมูล Sieve Analysis แล้ว');
+  });
+}
+
+document.getElementById('btnSettings').onclick = ()=>openSettings();
+document.getElementById('btnExport').onclick = exportExcel;
+document.getElementById('btnSaveAll').onclick = saveAll;
+document.getElementById('filterUW').addEventListener('input', renderUW);
+document.getElementById('filterSV').addEventListener('input', renderSieve);
+document.getElementById('filterSieve').addEventListener('change', renderSieve);
+document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false);
+document.getElementById('addUW').onclick = ()=>{ UW.push({no:String(UW.length+1),depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
+document.getElementById('delUW').onclick = ()=>{ if(UW.length>1){UW.pop(); renderUW();} };
+document.getElementById('addSV').onclick = ()=>{ SV.push({no:String(SV.length+1),dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
+document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
+document.getElementById('clrUW').onclick = clearAllUW;
+document.getElementById('clrSV').onclick = clearAllSV;
+
+bindDrop('dzUW','fileUW','prevUW','uw');
+bindDrop('dzSV','fileSV','prevSV','sv');
+document.getElementById('ocrUW').addEventListener('click', runOcrUW);
+document.getElementById('ocrSV').addEventListener('click', runOcrSV);
+
+SIEVES.forEach(s=>{
+  const o=document.createElement('option'); o.value=s.name; o.textContent=s.name;
+  document.getElementById('filterSieve').appendChild(o);
+});
+
+switchTab('uw');
+renderUW();
+syncSieveFromUW(true);
+buildChart();
+</script>
+</body>
+</html>
