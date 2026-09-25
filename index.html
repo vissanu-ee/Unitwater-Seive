@@ -82,6 +82,8 @@ tailwind.config = {
         <input id="pjCheck" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none"></label>
       <label class="block"><span class="text-xs text-slate-500">DATE</span>
         <input id="pjDate" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="14/8/19"></label>
+      <label class="block"><span class="text-xs text-slate-500">TOTAL DEPTH</span>
+        <input id="pjTotalDepth" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="18.45 M."></label>
     </div>
   </div>
 </section>
@@ -92,6 +94,9 @@ tailwind.config = {
     <button data-tab="uw"    class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">① Unit Weight &amp; Water Content</button>
     <button data-tab="sieve" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">② Sieve Analysis</button>
     <button data-tab="chart" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">③ Grain Size Curve</button>
+    <button data-tab="att"   class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">④ Atterberg's Limits</button>
+    <button data-tab="uct"   class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">⑤ Unconfined Compression</button>
+    <button data-tab="summary" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">⑥ Summary</button>
   </div>
 </nav>
 
@@ -210,6 +215,161 @@ tailwind.config = {
   </div>
 </main>
 
+<!-- ============ TAB 4 : ATTERBERG'S LIMITS ============ -->
+<main id="tab-att" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">อัปโหลดรูปฟอร์ม — Atterberg's Limits</h3>
+        <p class="text-[11px] text-slate-500 mb-3">แยกอิสระจากฟอร์มอื่น</p>
+        <div id="dzATT" class="dropzone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+          <div class="text-3xl mb-1">🖼️</div>
+          <p class="text-xs text-slate-500">ลากไฟล์มาวาง หรือ <span class="text-[#3845a8] font-semibold">คลิกเลือกไฟล์</span></p>
+          <input id="fileATT" type="file" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="prevATT" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <button id="ocrATT" class="mt-3 w-full py-2.5 rounded-lg bg-[#1d2772] text-white text-xs font-semibold hover:bg-[#0c1557] transition">
+          ⚡ อ่านค่าจากรูปด้วย AI (OCR)
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-1.5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-2">สูตรคำนวณ (อ้างอิงโครงสร้างเดิมจากไฟล์ Excel)</h3>
+        <p>WATER (gm.) = (CAN+WET SOIL) − (CAN+DRY SOIL)</p>
+        <p>DRY SOIL (gm.) = (CAN+DRY SOIL) − (WT. CAN)</p>
+        <p>WATER CONTENT (%) = WATER / DRY SOIL × 100</p>
+        <p>(N/25)^0.12 = แฟกเตอร์ปรับค่าจากจำนวนครั้งตอก N (One-point Liquid Limit Method)</p>
+        <p>LIQUID LIMIT (%) = WATER CONTENT × (N/25)^0.12</p>
+        <p>PLASTICITY INDEX (%) = 0.73×(LL − 20) + ADJ. WATER</p>
+        <p>PLASTIC LIMIT (%) = LIQUID LIMIT − PLASTICITY INDEX</p>
+        <p class="text-slate-400">หาก NUMBER OF BLOWS เป็น "NP" (Non-Plastic) ระบบจะไม่คำนวณ LL/PL/PI ให้</p>
+      </div>
+    </div>
+    <div class="xl:col-span-3">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b bg-slate-50 no-print">
+          <h3 class="text-sm font-bold text-[#1d2772]">ตารางข้อมูล Atterberg's Limits (แก้ไขได้) — 1 หลุมเจาะต่อหน้า</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="addATT" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">+ เพิ่มตัวอย่าง</button>
+            <button id="delATT" class="text-xs px-3.5 py-2 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9] transition">− ลบตัวอย่างสุดท้าย</button>
+            <button id="clrATT" class="text-xs px-3.5 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table id="tblATT" class="min-w-full text-xs border-collapse"></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ TAB 5 : UNCONFINED COMPRESSION TEST ============ -->
+<main id="tab-uct" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-5 no-print">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h3 id="uctPageLabel" class="text-sm font-bold text-[#1d2772]">ตัวอย่างที่ 1 / 1 — คำนวณหน้าละ 1 หลุมเจาะดินเท่านั้น</h3>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="prevUCT" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">‹ ก่อนหน้า</button>
+        <button id="nextUCT" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">ถัดไป ›</button>
+        <button id="addUCT"  class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">+ เพิ่มตัวอย่างใหม่</button>
+        <button id="delUCT"  class="text-xs px-3.5 py-2 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9] transition">− ลบตัวอย่างนี้</button>
+        <button id="clrUCT"  class="text-xs px-3.5 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">อัปโหลดรูปฟอร์ม — Unconfined Compression</h3>
+        <p class="text-[11px] text-slate-500 mb-3">อ่านค่าทุกส่วนจากภาพเดียว (เติมลงตัวอย่างที่กำลังเปิดอยู่)</p>
+        <div id="dzUCT" class="dropzone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+          <div class="text-3xl mb-1">🖼️</div>
+          <p class="text-xs text-slate-500">ลากไฟล์มาวาง หรือ <span class="text-[#3845a8] font-semibold">คลิกเลือกไฟล์</span></p>
+          <input id="fileUCT" type="file" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="prevUCTImg" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <button id="ocrUCT" class="mt-3 w-full py-2.5 rounded-lg bg-[#1d2772] text-white text-xs font-semibold hover:bg-[#0c1557] transition">
+          ⚡ อ่านค่าจากรูปด้วย AI (OCR)
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctInfoBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctSpecBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctWaterBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5" id="uctResultBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-1.5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-2">สูตรคำนวณ (อ้างอิงโครงสร้างเดิมจากไฟล์ Excel)</h3>
+        <p>A (cm²) = π D² / 4</p>
+        <p>V (cm³) = A × h</p>
+        <p>W (g) = (Wet Soil+Container) − (Container)</p>
+        <p>γt (t/m³) = W / V</p>
+        <p>w (%) = (Wet−Dry Soil+Cont.) / (Dry Soil+Cont.−Container) × 100</p>
+        <p>γd (t/m³) = 100 × γt / (100 + w)</p>
+        <p class="pt-1 border-t">E (Axial Strain) = R×10⁻² / (10×h)</p>
+        <p>A' (Corrected Area) = A / (1−E)</p>
+        <p>P (Deviator Load, kg) = K × Q</p>
+        <p>σ1−σ3 (Deviator Stress, t/m²) = 10P / A'</p>
+        <p class="pt-1 border-t"><b>qu</b> = MAX(σ1−σ3 ทุกแถว)</p>
+        <p><b>Su</b> = qu / 2</p>
+      </div>
+    </div>
+    <div class="xl:col-span-3 space-y-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto max-h-[560px]">
+          <table id="tblUCT" class="min-w-full text-xs border-collapse"></table>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-3">Deviator Stress – Axial Strain Curve</h3>
+        <div class="h-[360px]"><canvas id="uctChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ TAB 6 : SUMMARY ============ -->
+<main id="tab-summary" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">ดึงค่าจากหมวดงานอื่น</h3>
+        <p class="text-[11px] text-slate-500 mb-3">จับคู่ด้วย Sample No. แล้วดึง Wn/LL/PL/PI/Gradation/qu/γt มาเติมอัตโนมัติ (DEPTH, PP, FV, SPT-N และ USCS GROUP ยังต้องกรอกเอง)</p>
+        <button id="syncSUM" class="w-full py-2.5 rounded-lg bg-[#1d2772] text-white text-xs font-semibold hover:bg-[#0c1557] transition">
+          ⟳ ดึงค่าจาก Unit Weight / Sieve / Atterberg / UCT
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs" id="sumStatsBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-1.5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-2">สูตรคำนวณ / ตัวแปร (อ้างอิงโครงสร้างเดิมจากไฟล์ Excel)</h3>
+        <p><b>Wn (%)</b> = Water Content จากหมวด Unit Weight & Water Content ของตัวอย่างที่ Sample No. ตรงกัน</p>
+        <p><b>LL, PL</b> = Liquid Limit / Plastic Limit จากหมวด Atterberg's Limits</p>
+        <p><b>PI</b> = LL − PL</p>
+        <p><b>NO.4 / 10 / 40 / 100 / 200</b> = % Finer (% Passing) จากหมวด Sieve Analysis ที่ขนาดตะแกรงนั้นๆ</p>
+        <p><b>qu, γt</b> = Unconfined Compressive Strength / Wet Unit Weight จากหมวด Unconfined Compression Test</p>
+        <p class="pt-1 border-t">USCS GROUP (ข้อเสนอแนะเบื้องต้น จากค่า %Passing No.200 (L) และ LL):</p>
+        <p>ถ้า L ≤ 12% → "G" (เม็ดหยาบ) · ถ้า L &gt; 50% → "C" (ละเอียด) · นอกนั้น → "S" (คาบเกี่ยว)</p>
+        <p>ถ้าเป็น "C": LL &gt; 50 → CH, LL ≤ 50 → CL — ผลลัพธ์เป็นเพียงข้อเสนอแนะ วิศวกรควรยืนยัน/แก้ไขค่าในช่อง USCS GROUP เอง</p>
+        <p class="pt-1 border-t text-slate-400">คำนวณหน้าละ 1 หลุมเจาะดินเท่านั้น</p>
+        <p class="text-slate-400"><b>สถิติสรุป</b>: Min/Max ของ Wn และ qu จากทุกตัวอย่างในตารางนี้</p>
+      </div>
+    </div>
+    <div class="xl:col-span-3">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b bg-slate-50 no-print">
+          <h3 class="text-sm font-bold text-[#1d2772]">SUMMARY OF TEST RESULTS (แก้ไขได้) — 1 หลุมเจาะต่อหน้า</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="addSUM" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">+ เพิ่มตัวอย่าง</button>
+            <button id="delSUM" class="text-xs px-3.5 py-2 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9] transition">− ลบตัวอย่างสุดท้าย</button>
+            <button id="clrSUM" class="text-xs px-3.5 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table id="tblSUM" class="min-w-full text-xs border-collapse"></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
 <footer class="max-w-[1500px] mx-auto px-5 py-8 text-center text-[11px] text-slate-400">
   Ten Consultants Co., Ltd. — Geotechnical Laboratory Module · ค่าที่คำนวณปัดทศนิยม 2 ตำแหน่ง
 </footer>
@@ -256,6 +416,50 @@ let SV = [
   {no:'6',dish:'จ-77',depth:'',a:null,b:null,c:null,f:{'#4':23.26,'#10':33.12,'#40':51.49,'#100':62.88,'#200':64.09}}
 ];
 
+// Atterberg's Limits — 1 borehole per page, N sample columns (โครงสร้าง/สูตรอ้างอิงจาก Data - Atterberg's Limits.xlsx)
+let ATT = [
+  {no:'SS-2', depth:'', testType:'', canNo:'', blows:'24', a:495, b:1870, c:1480, adjWater:3},
+  {no:'SS-4', depth:'', testType:'', canNo:'', blows:'20', a:435, b:1488, c:1263, adjWater:3},
+  {no:'SS-6', depth:'', testType:'', canNo:'', blows:'20', a:435, b:1541, c:1303, adjWater:3},
+  {no:'SS-2', depth:'', testType:'', canNo:'', blows:'21', a:453, b:947,  c:805,  adjWater:3},
+  {no:'SS-4', depth:'', testType:'', canNo:'', blows:'23', a:439, b:1672, c:1398, adjWater:3},
+  {no:'SS-6', depth:'', testType:'', canNo:'', blows:'21', a:456, b:1597, c:1378, adjWater:3}
+];
+
+// Unconfined Compression Test — คำนวณหน้าละ 1 หลุมเจาะ/ตัวอย่างเท่านั้น (โครงสร้าง/สูตรอ้างอิงจาก Data - Unconfined Compression Test.xlsx)
+const UCT_R = [0,10,20,30,40,50,60,70,80,90,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400,420,440,460,480,500,520,540,560];
+function newUCT(){
+  return {
+    no:'', depth:'', soilType:'', strainRate:'', K:0.0653,
+    H:'', D:'', soilSplitFormer:'-', splitFormer:'-',
+    cont:'', b:'', c:'', a:'',
+    Q: UCT_R.map(()=>'')
+  };
+}
+let UCT = [{
+  no:'ST-1', depth:'3.00-3.45', soilType:'CLAY', strainRate:0.5, K:0.0653,
+  H:7.613, D:3.759, soilSplitFormer:'-', splitFormer:'-',
+  cont:'C-72', b:179.49, c:136.89, a:18.88,
+  Q:[0,11,14.5,16,19,20,22,23,25,26,27,30,33,35,38,40,42,44,48,49,50,52,58,58,'','','','','','','','','','']
+}];
+let uctIdx = 0;
+
+// Summary of Test Results — 1 borehole per page, sample = 1 row (โครงสร้าง/ตัวอย่างอ้างอิงจาก Summary_อาคารเรียน 3 ชั้น.xls)
+let SUM = [
+  {no:'SS-1', from:1.5,  to:1.95, wn:18.0, ll:26.3, pl:19.4, g4:86.1, g10:79.7, g40:69.0, g100:63.9, g200:62.6, uscs:'CL-ML', pp:'', fv:'', qu:'', gt:'', sptN:26},
+  {no:'ST-1', from:3,    to:3.5,  wn:45.6, ll:55.3, pl:26.0, g4:100,  g10:99.9, g40:99.1, g100:98.1, g200:97.3, uscs:'CH',    pp:'', fv:'', qu:7.78, gt:1.85, sptN:''},
+  {no:'ST-2', from:4.5,  to:5,    wn:56.3, ll:52.5, pl:25.1, g4:99.9, g10:99.9, g40:99.5, g100:98.5, g200:97.7, uscs:'CH',    pp:'', fv:'', qu:4.78, gt:1.62, sptN:''},
+  {no:'ST-3', from:6,    to:6.5,  wn:89.3, ll:55.7, pl:26.3, g4:91.2, g10:79.6, g40:73.4, g100:70.7, g200:70.0, uscs:'CH',    pp:'', fv:'', qu:2.51, gt:1.53, sptN:''},
+  {no:'ST-4', from:7.5,  to:8,    wn:78.9, ll:53.0, pl:26.0, g4:100,  g10:99.7, g40:99.0, g100:97.7, g200:95.9, uscs:'CH',    pp:'', fv:'', qu:3.85, gt:1.56, sptN:''},
+  {no:'SS-2', from:9,    to:9.45, wn:32.6, ll:64.8, pl:30.2, g4:'',   g10:'',   g40:99.97,g100:99.92,g200:99.65,uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:18},
+  {no:'SS-3', from:10.5, to:10.95,wn:23.5, ll:61.5, pl:29.7, g4:99.3, g10:98.8, g40:98.3, g100:97.6, g200:97.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:25},
+  {no:'SS-4', from:12,   to:12.45,wn:20.4, ll:57.5, pl:27.1, g4:94.5, g10:92.0, g40:88.7, g100:87.7, g200:87.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:29},
+  {no:'SS-5', from:13.5, to:13.95,wn:21.2, ll:60.8, pl:29.0, g4:99.9, g10:99.8, g40:99.4, g100:99.1, g200:98.9, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:42},
+  {no:'SS-6', from:15,   to:15.45,wn:20.9, ll:60.1, pl:28.8, g4:92.5, g10:92.0, g40:91.1, g100:90.4, g200:89.6, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:57},
+  {no:'SS-7', from:16.5, to:16.95,wn:21.7, ll:58.8, pl:29.1, g4:99.7, g10:98.2, g40:96.5, g100:96.1, g200:95.7, uscs:'CH',    pp:'', fv:'', qu:'', gt:2.06, sptN:61},
+  {no:'SS-8', from:18,   to:18.45,wn:21.5, ll:55.4, pl:26.9, g4:99.2, g10:98.5, g40:97.3, g100:96.8, g200:96.2, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:69}
+];
+
 /* =====================================================================
    CALCULATION ENGINE
    ===================================================================== */
@@ -295,6 +499,107 @@ function syncSieveFromUW(silent){
   });
   renderSieve(); buildChart();
   if(!silent) toast(`ลิงก์ค่าสำเร็จ ${hit}/${SV.length} ตัวอย่าง`,'success');
+}
+
+const r3 = v => (v===''||v===null||v===undefined||isNaN(v)) ? null : Math.round(v*1000)/1000;
+const r4 = v => (v===''||v===null||v===undefined||isNaN(v)) ? null : Math.round(v*10000)/10000;
+
+/* ---- Atterberg's Limits (One-point Liquid Limit method) ---- */
+function calcAtterberg(s){
+  const a=num(s.a), b=num(s.b), c=num(s.c), N=num(s.blows), adjW=num(s.adjWater);
+  const water    = (b!==null&&c!==null) ? r2(b-c) : null;
+  const drySoil  = (c!==null&&a!==null) ? r2(c-a) : null;
+  const wc       = (water!==null&&drySoil) ? r2(water/drySoil*100) : null;
+  const factor   = (N!==null) ? r3(Math.pow(N/25,0.12)) : null;
+  const LL       = (wc!==null&&factor!==null) ? r2(wc*factor) : null;
+  const PI       = (LL!==null&&adjW!==null) ? r2(0.73*(LL-20)+adjW) : null;
+  const PL       = (LL!==null&&PI!==null) ? r2(LL-PI) : null;
+  return {water,drySoil,wc,factor,LL,PI,PL};
+}
+
+/* ---- Unconfined Compression Test ---- */
+function calcUCTRow(t, R, Q){
+  const H=num(t.H), D=num(t.D), K=num(t.K)??0.0653;
+  const q = num(Q);
+  const area = (D!==null) ? D*D*3.14285/4 : null;                       // J16 : A = πD²/4
+  const strain = (H) ? (R*0.01)/(10*H) : null;                          // D   : E = Rx10^-2 / 10h
+  const corrArea = (strain!==null&&area!==null) ? area/(1-strain) : null; // E   : A' = A/(1-E)
+  const load = (q===null||q===0) ? 0 : K*q;                             // F   : P = Q.K
+  const stress = (load!==null&&corrArea) ? load*10/corrArea : null;     // G   : σ1-σ3 = 10P/A'
+  return {area, strain:r4(strain), corrArea:r3(corrArea), load:r3(load), stress:r2(stress)};
+}
+function calcUCTSummary(t){
+  const H=num(t.H), D=num(t.D), a=num(t.a), b=num(t.b), c=num(t.c);
+  const area   = (D!==null) ? r3(D*D*3.14285/4) : null;
+  const vol    = (area!==null&&H!==null) ? r2(area*H) : null;
+  const W      = (b!==null&&a!==null) ? r2(b-a) : null;                 // Weight of Soil = Wet+Cont − Cont
+  const gt     = (W!==null&&vol) ? r2(W/vol) : null;                    // Wet Unit Weight
+  const water  = (b!==null&&c!==null) ? r2(b-c) : null;
+  const drySoil= (c!==null&&a!==null) ? r2(c-a) : null;
+  const wc     = (water!==null&&drySoil) ? r2(water/drySoil*100) : null;
+  const gd     = (gt!==null&&wc!==null) ? r2(100*gt/(100+wc)) : null;   // Dry Unit Weight
+  const stresses = UCT_R.map((R,i)=>calcUCTRow(t,R,t.Q[i]).stress).filter(v=>v!==null);
+  const qu = stresses.length ? r2(Math.max(...stresses)) : null;
+  const su = (qu!==null) ? r2(qu/2) : null;
+  return {area, vol, W, gt, water, drySoil, wc, gd, qu, su};
+}
+
+/* ---- Summary of Test Results ---- */
+function calcSummaryRow(s){
+  const ll=num(s.ll), pl=num(s.pl), g200=num(s.g200);
+  const pi = (ll!==null&&pl!==null) ? r2(ll-pl) : null;
+  let uscsAuto = null;
+  if(g200!==null){
+    const t = g200<=12 ? 'G' : g200>50 ? 'C' : 'S';
+    uscsAuto = (t==='C' && ll!==null) ? (ll>50?'CH':'CL') : t;
+  }
+  return {pi, uscsAuto};
+}
+
+function calcSummaryStats(){
+  const wnVals = SUM.map(s=>num(s.wn)).filter(v=>v!==null);
+  const quVals = SUM.map(s=>num(s.qu)).filter(v=>v!==null);
+  return {
+    wnMin: wnVals.length ? r2(Math.min(...wnVals)) : null,
+    wnMax: wnVals.length ? r2(Math.max(...wnVals)) : null,
+    quMin: quVals.length ? r2(Math.min(...quVals)) : null,
+    quMax: quVals.length ? r2(Math.max(...quVals)) : null
+  };
+}
+function renderSumStats(){
+  const s = calcSummaryStats();
+  document.getElementById('sumStatsBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-2">สถิติสรุป (Min / Max)</h3>
+    <table class="w-full text-center border-collapse">
+      <tr class="text-slate-400"><td></td><td class="font-semibold">Min</td><td class="font-semibold">Max</td></tr>
+      <tr><td class="text-left text-slate-500">Wn (%)</td><td class="calc-cell rounded py-0.5">${show(s.wnMin)}</td><td class="calc-cell rounded py-0.5">${show(s.wnMax)}</td></tr>
+      <tr><td class="text-left text-slate-500 pt-1">qu (t/m²)</td><td class="calc-cell rounded py-0.5">${show(s.quMin)}</td><td class="calc-cell rounded py-0.5">${show(s.quMax)}</td></tr>
+    </table>`;
+}
+
+function syncSummaryFromModules(){
+  let hit=0;
+  SUM.forEach(s=>{
+    const key = String(s.no).trim();
+    if(!key) return;
+    const u = UW.find(x=>String(x.no).trim()===key);
+    if(u){ const c=calcUW(u); if(c.w!==null) s.wn = c.w; }
+    const at = ATT.find(x=>String(x.no).trim()===key);
+    if(at){ const c=calcAtterberg(at); if(c.LL!==null) s.ll=c.LL; if(c.PL!==null) s.pl=c.PL; }
+    const sv = SV.find(x=>String(x.no).trim()===key);
+    if(sv){
+      const {rows} = calcSieve(sv);
+      const pick = name => { const r = rows.find(r=>r.sieve===name); return r && r.i!==null ? r.i : undefined; };
+      const g4=pick('#4'), g10=pick('#10'), g40=pick('#40'), g100=pick('#100'), g200=pick('#200');
+      if(g4!==undefined) s.g4=g4; if(g10!==undefined) s.g10=g10; if(g40!==undefined) s.g40=g40;
+      if(g100!==undefined) s.g100=g100; if(g200!==undefined) s.g200=g200;
+    }
+    const t = UCT.find(x=>String(x.no).trim()===key);
+    if(t){ const c=calcUCTSummary(t); if(c.qu!==null) s.qu=c.qu; if(c.gt!==null) s.gt=c.gt; }
+    if(u||at||sv||t) hit++;
+  });
+  renderSUM();
+  toast(`ดึงค่าสำเร็จ ${hit}/${SUM.length} ตัวอย่าง`,'success');
 }
 
 /* =====================================================================
@@ -461,6 +766,315 @@ function renderSieve(){
 }
 
 /* =====================================================================
+   RENDER : ATTERBERG'S LIMITS TABLE
+   ===================================================================== */
+const ATT_ROWS = [
+  {n:1, label:'SAMPLE NO.', unit:'', key:'no', type:'input'},
+  {n:2, label:'DEPTH', unit:'(m.)', key:'depth', type:'input'},
+  {n:3, label:'TYPE OF TEST', unit:'', key:'testType', type:'input'},
+  {n:4, label:'CAN NO.', unit:'', key:'canNo', type:'input'},
+  {n:5, label:'NUMBER OF BLOWS, N', unit:'', key:'blows', type:'input'},
+  {n:6, label:'WT. CAN', unit:'(gm.)', key:'a', type:'input'},
+  {n:7, label:'CAN + WET SOIL', unit:'(gm.)', key:'b', type:'input'},
+  {n:8, label:'CAN + DRY SOIL', unit:'(gm.)', key:'c', type:'input'},
+  {n:9, label:'WATER, 7 − 8', unit:'(gm.)', key:'water', type:'calc'},
+  {n:10,label:'DRY SOIL, 8 − 6', unit:'(gm.)', key:'drySoil', type:'calc'},
+  {n:11,label:'WATER CONTENT, 9/10×100', unit:'%', key:'wc', type:'calc'},
+  {n:12,label:'(N/25)^0.12', unit:'', key:'factor', type:'calc'},
+  {n:13,label:'ADJ. WATER', unit:'', key:'adjWater', type:'input'},
+  {n:14,label:'LIQUID LIMIT', unit:'%', key:'LL', type:'calc'},
+  {n:15,label:'PLASTICITY INDEX', unit:'%', key:'PI', type:'calc'},
+  {n:16,label:'PLASTIC LIMIT', unit:'%', key:'PL', type:'calc'}
+];
+
+function renderATT(){
+  let html = `<thead><tr class="bg-[#0f185a] text-white">
+      <th class="sticky-col bg-[#0f185a] text-left px-3 py-2 w-8">#</th>
+      <th class="sticky-col bg-[#0f185a] text-left px-3 py-2 min-w-[220px]" style="left:2rem">รายการ</th>
+      <th class="px-2 py-2 w-16">หน่วย</th>`;
+  ATT.forEach((s,i)=> html += `<th class="px-2 py-2 min-w-[92px]">Sample ${i+1}</th>`);
+  html += `</tr></thead><tbody>`;
+
+  ATT_ROWS.forEach(row=>{
+    const zebra = row.n%2 ? 'bg-white' : 'bg-slate-50/60';
+    html += `<tr class="${zebra} border-b border-slate-100">
+      <td class="sticky-col ${row.n%2?'bg-white':'bg-slate-50'} px-3 py-1.5 text-slate-400 font-mono">${row.n}</td>
+      <td class="sticky-col ${row.n%2?'bg-white':'bg-slate-50'} px-3 py-1.5 font-medium text-slate-700" style="left:2rem">${row.label}</td>
+      <td class="px-2 py-1.5 text-center text-slate-400 text-[10px]">${row.unit}</td>`;
+    ATT.forEach((s,i)=>{
+      const calc = calcAtterberg(s);
+      if(row.type==='calc'){
+        html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[row.key])}</td>`;
+      }else{
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${show(s[row.key])}"></td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+  const tbl = document.getElementById('tblATT');
+  tbl.innerHTML = html;
+  tbl.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const {idx,key} = e.target.dataset;
+      ATT[idx][key] = e.target.value;
+      refreshCalcOnlyATT();
+    });
+  });
+}
+function refreshCalcOnlyATT(){
+  const tbl  = document.getElementById('tblATT');
+  const rows = tbl.querySelectorAll('tbody tr');
+  ATT_ROWS.forEach((row,ri)=>{
+    if(row.type!=='calc') return;
+    const cells = rows[ri].querySelectorAll('td');
+    ATT.forEach((s,ci)=>{ cells[3+ci].textContent = show(calcAtterberg(s)[row.key]); });
+  });
+}
+
+/* =====================================================================
+   RENDER : SUMMARY OF TEST RESULTS
+   ===================================================================== */
+const SUM_COLS = [
+  {key:'no',   label:'SAMPLE<br>NO.',        unit:'',      type:'input', w:'70px'},
+  {key:'from', label:'DEPTH<br>FROM',        unit:'m.',    type:'input', w:'62px'},
+  {key:'to',   label:'DEPTH<br>TO',          unit:'m.',    type:'input', w:'62px'},
+  {key:'wn',   label:'Wn',                   unit:'%',     type:'input', w:'62px'},
+  {key:'ll',   label:'LL.',                  unit:'%',     type:'input', w:'62px'},
+  {key:'pl',   label:'PL.',                  unit:'%',     type:'input', w:'62px'},
+  {key:'pi',   label:'PI.',                  unit:'%',     type:'calc', w:'62px'},
+  {key:'g4',   label:'NO.4',                 unit:'%',     type:'input', w:'62px'},
+  {key:'g10',  label:'NO.10',                unit:'%',     type:'input', w:'62px'},
+  {key:'g40',  label:'NO.40',                unit:'%',     type:'input', w:'62px'},
+  {key:'g100', label:'NO.100',               unit:'%',     type:'input', w:'62px'},
+  {key:'g200', label:'NO.200',               unit:'%',     type:'input', w:'62px'},
+  {key:'uscs', label:'USCS<br>GROUP',        unit:'',      type:'uscs', w:'80px'},
+  {key:'pp',   label:'PP.',                  unit:'t/m²',  type:'input', w:'62px'},
+  {key:'fv',   label:'FV.',                  unit:'t/m²',  type:'input', w:'62px'},
+  {key:'qu',   label:'qu.',                  unit:'t/m²',  type:'input', w:'62px'},
+  {key:'gt',   label:'γt',                   unit:'t/m³',  type:'input', w:'62px'},
+  {key:'sptN', label:'SPT-N',                unit:'blow/ft', type:'input', w:'70px'}
+];
+function renderSUM(){
+  let html = `<thead><tr class="bg-[#0f185a] text-white text-[11px]">
+    <th class="px-2 py-2 w-8">#</th>`;
+  SUM_COLS.forEach(c=> html += `<th class="px-1 py-2" style="min-width:${c.w}">${c.label}${c.unit?`<br><span class="opacity-70 font-normal">(${c.unit})</span>`:''}</th>`);
+  html += `</tr></thead><tbody>`;
+  SUM.forEach((s,i)=>{
+    const calc = calcSummaryRow(s);
+    html += `<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}">
+      <td class="px-2 py-1 text-center text-slate-400 font-mono">${i+1}</td>`;
+    SUM_COLS.forEach(c=>{
+      if(c.type==='calc'){
+        html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[c.key])}</td>`;
+      }else if(c.type==='uscs'){
+        const suggestion = calc.uscsAuto && !s.uscs ? `<span class="text-slate-300">(${calc.uscsAuto}?)</span>` : '';
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="uscs" value="${show(s.uscs)}" placeholder="${calc.uscsAuto||''}" class="text-center">${suggestion}</td>`;
+      }else{
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${c.key}" value="${show(s[c.key])}" class="text-center"></td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+  const tbl = document.getElementById('tblSUM');
+  tbl.innerHTML = html;
+  tbl.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const {idx,key} = e.target.dataset;
+      SUM[idx][key] = e.target.value;
+      refreshCalcOnlySUM();
+    });
+  });
+  renderSumStats();
+}
+function refreshCalcOnlySUM(){
+  const tbl = document.getElementById('tblSUM');
+  const rows = tbl.querySelectorAll('tbody tr');
+  SUM.forEach((s,i)=>{
+    const calc = calcSummaryRow(s);
+    const piIdx = 1 + SUM_COLS.findIndex(c=>c.key==='pi'); // +1 for the leading "#" column
+    rows[i].querySelectorAll('td')[piIdx].textContent = show(calc.pi);
+  });
+  renderSumStats();
+}
+
+
+/* =====================================================================
+   RENDER : UNCONFINED COMPRESSION TEST
+   ===================================================================== */
+function infoRow(label, id, val, unit){
+  return `<label class="flex items-center justify-between gap-2"><span class="text-slate-500">${label}</span>
+    <input id="${id}" class="w-28 text-right bg-[#fffdf2] border border-slate-200 rounded px-1.5 py-0.5" value="${show(val)}"><span class="text-[10px] text-slate-400 w-8">${unit||''}</span></label>`;
+}
+function calcRow(label, val, unit){
+  return `<div class="flex items-center justify-between gap-2"><span class="text-slate-500">${label}</span>
+    <span class="calc-cell rounded px-2 py-0.5 font-semibold">${show(val)} <span class="text-[10px] font-normal opacity-70">${unit||''}</span></span></div>`;
+}
+
+function renderUCT(){
+  if(uctIdx>=UCT.length) uctIdx = UCT.length-1;
+  if(uctIdx<0) uctIdx = 0;
+  const t = UCT[uctIdx];
+  document.getElementById('uctPageLabel').textContent = `ตัวอย่างที่ ${uctIdx+1} / ${UCT.length} — คำนวณหน้าละ 1 หลุมเจาะดินเท่านั้น`;
+
+  document.getElementById('uctInfoBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">ข้อมูลตัวอย่าง</h3>
+    ${infoRow('Sample No.','uctNo',t.no)}
+    ${infoRow('Depth','uctDepth',t.depth,'m.')}
+    ${infoRow('Soil Sample','uctSoilType',t.soilType)}
+    ${infoRow('Strain Rate','uctStrainRate',t.strainRate,'mm/min.')}
+    ${infoRow('Load Scale K (=K×Q)','uctK',t.K,'kg./div.')}`;
+
+  document.getElementById('uctSpecBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">SOIL SPECIMEN MEASUREMENTS</h3>
+    ${infoRow('Height, h','uctH',t.H,'cm.')}
+    ${infoRow('Diameter, D','uctD',t.D,'cm.')}
+    ${infoRow('Wt. Soil+Split Former','uctSoilSplitFormer',t.soilSplitFormer,'g')}
+    ${infoRow('Wt. Split Former','uctSplitFormer',t.splitFormer,'g')}`;
+
+  document.getElementById('uctWaterBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">WATER CONTENT DETERMINATION</h3>
+    ${infoRow('Container No.','uctCont',t.cont)}
+    ${infoRow('Wet Soil + Container','uctB',t.b,'g')}
+    ${infoRow('Dry Soil + Container','uctC',t.c,'g')}
+    ${infoRow('Weight of Container','uctA',t.a,'g')}`;
+
+  const sum = calcUCTSummary(t);
+  document.getElementById('uctResultBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
+    <div class="space-y-1.5 text-xs">
+      ${calcRow('Area, A', sum.area, 'cm²')}
+      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
+      ${calcRow('Weight of Soil, W', sum.W, 'g')}
+      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
+      ${calcRow('Weight of Water', sum.water, 'g')}
+      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
+      ${calcRow('Water Content, w', sum.wc, '%')}
+      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
+      <div class="pt-2 mt-2 border-t space-y-1.5">
+        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
+        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
+      </div>
+    </div>`;
+
+  let html = `<thead><tr class="bg-[#0f185a] text-white text-[11px]">
+    <th class="px-2 py-2">Deformation<br>Dial R<br>(x0.01 mm)</th>
+    <th class="px-2 py-2">Load Dial, Q<br>(x0.0001 in.)</th>
+    <th class="px-2 py-2">Axial Strain<br>E=Rx10⁻²/10h</th>
+    <th class="px-2 py-2">Corrected Area<br>A'=A/(1-E) (cm²)</th>
+    <th class="px-2 py-2">Deviator Load<br>P=Q.K (kg)</th>
+    <th class="px-2 py-2">Deviator Stress<br>σ1-σ3=10P/A' (t/m²)</th>
+  </tr></thead><tbody>`;
+  UCT_R.forEach((R,i)=>{
+    const c = calcUCTRow(t,R,t.Q[i]);
+    html += `<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}">
+      <td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td>
+      <td class="tbl-cell input-cell px-1 py-1"><input data-row="${i}" value="${show(t.Q[i])}"></td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td>
+      <td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td>
+    </tr>`;
+  });
+  html += `</tbody>`;
+  const tbl = document.getElementById('tblUCT');
+  tbl.innerHTML = html;
+
+  // bind info-box inputs
+  const bind = (id,obj,key,onchange)=>{
+    const el = document.getElementById(id);
+    el.addEventListener('input', e=>{ obj[key]=e.target.value; if(onchange) onchange(); });
+  };
+  bind('uctNo',t,'no'); bind('uctDepth',t,'depth'); bind('uctSoilType',t,'soilType');
+  bind('uctStrainRate',t,'strainRate');
+  bind('uctK',t,'K',()=>{ refreshUCTCalcOnly(); });
+  bind('uctH',t,'H',()=>{ refreshUCTCalcOnly(); });
+  bind('uctD',t,'D',()=>{ refreshUCTCalcOnly(); });
+  bind('uctSoilSplitFormer',t,'soilSplitFormer'); bind('uctSplitFormer',t,'splitFormer');
+  bind('uctCont',t,'cont');
+  bind('uctB',t,'b',()=>{ refreshUCTCalcOnly(); });
+  bind('uctC',t,'c',()=>{ refreshUCTCalcOnly(); });
+  bind('uctA',t,'a',()=>{ refreshUCTCalcOnly(); });
+
+  tbl.querySelectorAll('input[data-row]').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      t.Q[e.target.dataset.row] = e.target.value;
+      refreshUCTCalcOnly();
+    });
+  });
+
+  buildUCTChart();
+}
+
+function refreshUCTCalcOnly(){
+  const t = UCT[uctIdx];
+  const sum = calcUCTSummary(t);
+  document.getElementById('uctResultBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
+    <div class="space-y-1.5 text-xs">
+      ${calcRow('Area, A', sum.area, 'cm²')}
+      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
+      ${calcRow('Weight of Soil, W', sum.W, 'g')}
+      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
+      ${calcRow('Weight of Water', sum.water, 'g')}
+      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
+      ${calcRow('Water Content, w', sum.wc, '%')}
+      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
+      <div class="pt-2 mt-2 border-t space-y-1.5">
+        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
+        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
+      </div>
+    </div>`;
+  const tbl = document.getElementById('tblUCT');
+  const rows = tbl.querySelectorAll('tbody tr');
+  UCT_R.forEach((R,i)=>{
+    const c = calcUCTRow(t,R,t.Q[i]);
+    const cells = rows[i].querySelectorAll('td');
+    cells[2].textContent = show(c.strain);
+    cells[3].textContent = show(c.corrArea);
+    cells[4].textContent = show(c.load);
+    cells[5].textContent = show(c.stress);
+  });
+  buildUCTChart();
+}
+
+let uctChart=null;
+function buildUCTChart(){
+  const t = UCT[uctIdx];
+  const ctx = document.getElementById('uctChart');
+  const pts = UCT_R.map((R,i)=>{
+    const qRaw = t.Q[i];
+    if(qRaw===''||qRaw===null||qRaw===undefined) return null; // ยังไม่ได้กรอกแถวนี้ ไม่ต้องพลอตจุด
+    const c = calcUCTRow(t,R,qRaw);
+    return (c.strain!==null && c.stress!==null) ? {x:r2(c.strain*100), y:c.stress} : null;
+  }).filter(p=>p);
+
+  const su = calcUCTSummary(t).su;
+
+  if(uctChart) uctChart.destroy();
+  uctChart = new Chart(ctx,{
+    type:'line',
+    data:{datasets:[
+      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
+       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
+       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
+      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
+       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
+       borderColor:'#ff0000', backgroundColor:'#ff0000'}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}, grid:{color:'#eaebf2'}},
+        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}, grid:{color:'#eaebf2'}}
+      },
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
+    }
+  });
+}
+
+/* =====================================================================
    CHART
    ===================================================================== */
 let chart=null;
@@ -493,7 +1107,7 @@ function buildChart(){
 /* =====================================================================
    FILE UPLOAD & OCR
    ===================================================================== */
-const IMG = {uw:[], sv:[]};
+const IMG = {uw:[], sv:[], att:[], uct:[]};
 function bindDrop(dzId, inputId, prevId, bucket){
   const dz = document.getElementById(dzId), fi = document.getElementById(inputId);
   dz.addEventListener('click', ()=>fi.click());
@@ -664,9 +1278,111 @@ async function runOcrSV(){
   }
 }
 
-/* =====================================================================
-   EXPORT EXCEL (สร้างไฟล์หน้าเดียว พร้อมจัดสไตล์เส้นขอบและสีธีมวิศวกรรม)
-   ===================================================================== */
+async function runOcrATT(){
+  if(!IMG.att.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
+  if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:"ATTERBERG'S LIMITS", allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try{
+    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ ATTERBERG'S LIMITS (LIQUID LIMIT / PLASTIC LIMIT) นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+
+สำหรับแต่ละตัวอย่าง (sample/column) ที่พบในรูป ให้อ่านค่าตามตัวเลขจริงในรูปเท่านั้น (ไม่ต้องคำนวณ Water Content, Liquid Limit, Plastic Limit หรือ Plasticity Index เอง ระบบจะคำนวณให้อัตโนมัติจาก WATER=(b-c), DRY SOIL=(c-a), WATER CONTENT=WATER/DRY SOIL×100, factor=(N/25)^0.12, LL=WATER CONTENT×factor, PI=0.73×(LL-20)+ADJ.WATER, PL=LL-PI) แล้วสร้าง object ที่มี field:
+- "no": Sample No.
+- "depth": Depth M. ถ้ามี
+- "testType": Type of test ถ้ามี
+- "canNo": Can No.
+- "blows": Number of Blows (เป็นตัวเลข เช่น 24 หรือข้อความ เช่น "NP" ถ้าไม่สามารถทดสอบได้)
+- "a": Wt. Can (gm.)
+- "b": Can+Wet soil (gm.)
+- "c": Can+Dry soil (gm.)
+- "adjWater": ค่า Adj. Water ถ้ามีในรูป (ปกติมักเป็น 3 ถ้าไม่ปรากฏให้เว้นว่าง)
+
+ตอบกลับเป็น JSON array ล้วนๆ เช่น:
+[{"no":"SS-2","blows":24,"canNo":"","a":495,"b":1870,"c":1480,"adjWater":3}]`;
+
+    const arr = await callGemini(IMG.att, prompt);
+    if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+    const isBlankATT = s => !s.no && !s.canNo && !s.blows &&
+      (s.a===''||s.a===null||s.a===undefined) && (s.b===''||s.b===null||s.b===undefined) && (s.c===''||s.c===null||s.c===undefined);
+    const blankQueueATT = ATT.map((s,i)=>isBlankATT(s)?i:-1).filter(i=>i>=0);
+    arr.forEach(item=>{
+      let idx = ATT.findIndex(s=>
+        (item.canNo && s.canNo && String(s.canNo).trim()===String(item.canNo).trim()) ||
+        (item.no && s.no && String(s.no).trim()===String(item.no).trim()));
+      if(idx<0 && blankQueueATT.length) idx = blankQueueATT.shift();
+      const merged = {
+        no:item.no ?? (idx>=0?ATT[idx].no:''),
+        depth:item.depth ?? (idx>=0?ATT[idx].depth:''),
+        testType:item.testType ?? (idx>=0?ATT[idx].testType:''),
+        canNo:item.canNo ?? (idx>=0?ATT[idx].canNo:''),
+        blows:item.blows ?? (idx>=0?ATT[idx].blows:''),
+        a:item.a ?? null, b:item.b ?? null, c:item.c ?? null,
+        adjWater:item.adjWater ?? (idx>=0?ATT[idx].adjWater:3)
+      };
+      if(idx>=0) ATT[idx] = merged; else ATT.push(merged);
+    });
+    renderATT();
+    Swal.close();
+    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+  }catch(err){
+    if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+  }
+}
+
+async function runOcrUCT(){
+  if(!IMG.uct.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
+  if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNCONFINED COMPRESSION TEST', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try{
+    const rList = UCT_R.join(', ');
+    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ UNCONFINED COMPRESSION TEST นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON object เดียว (ไม่ใช่ array) เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence เนื่องจากหน้านี้คำนวณได้ทีละ 1 ตัวอย่าง/หลุมเจาะเท่านั้น
+
+อ่านค่าตามตัวเลขจริงในรูปเท่านั้น (ไม่ต้องคำนวณ Area, Volume, Axial Strain, Corrected Area, Deviator Load, Deviator Stress, qu, Su เอง ระบบจะคำนวณให้อัตโนมัติ) โดย object มี field ดังนี้:
+- "no": Sample No.
+- "depth": Depth (เช่น "3.00-3.45")
+- "soilType": Soil Sample (เช่น CLAY)
+- "strainRate": Strain Rate (mm/min.) ถ้ามี
+- "K": ค่าคงที่ Load Scale K (สัมประสิทธิ์คูณกับ Q) ถ้ามี ปกติประมาณ 0.0653
+- "H": Height, h (cm.)
+- "D": Diameter (cm.)
+- "cont": Container No. (สำหรับหาความชื้น)
+- "b": Weight of Wet Soil+Container (g)
+- "c": Weight of Dry Soil+Container (g)
+- "a": Weight of Container (g)
+- "readings": array ของค่าที่อ่านได้จากตาราง Load Dial โดยแต่ละอันมี field "r" (Deformation Dial, R ×0.01mm — ใช้ค่าจากชุดมาตรฐานนี้เท่านั้น: ${rList}) และ "q" (Load Dial, Q ×0.0001in. ตามตัวเลขจริงที่อ่านได้ในแถวนั้น) ใส่เฉพาะแถวที่มีค่า Q จริงในรูป ไม่ต้องใส่แถวที่ว่างเปล่า
+
+ตอบกลับเป็น JSON object ล้วนๆ เช่น:
+{"no":"ST-1","depth":"3-3.45","soilType":"CLAY","H":7.61,"D":3.76,"cont":"C-72","b":179.49,"c":136.89,"a":18.88,"readings":[{"r":0,"q":0},{"r":10,"q":11},{"r":20,"q":14.5}]}`;
+
+    const obj = await callGemini(IMG.uct, prompt);
+    if(!obj || typeof obj!=='object' || Array.isArray(obj)) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+    const t = UCT[uctIdx];
+    if(obj.no!=null) t.no = obj.no;
+    if(obj.depth!=null) t.depth = obj.depth;
+    if(obj.soilType!=null) t.soilType = obj.soilType;
+    if(obj.strainRate!=null) t.strainRate = obj.strainRate;
+    if(obj.K!=null) t.K = obj.K;
+    if(obj.H!=null) t.H = obj.H;
+    if(obj.D!=null) t.D = obj.D;
+    if(obj.cont!=null) t.cont = obj.cont;
+    if(obj.b!=null) t.b = obj.b;
+    if(obj.c!=null) t.c = obj.c;
+    if(obj.a!=null) t.a = obj.a;
+    let filled = 0;
+    if(Array.isArray(obj.readings)){
+      obj.readings.forEach(rd=>{
+        const i = UCT_R.indexOf(Number(rd.r));
+        if(i>=0 && rd.q!==null && rd.q!==undefined && rd.q!==''){ t.Q[i] = rd.q; filled++; }
+      });
+    }
+    renderUCT();
+    Swal.close();
+    toast(`อ่านค่าสำเร็จ (${filled} แถว)`,'success');
+  }catch(err){
+    if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+  }
+}
 function header(){
   return {
     project : document.getElementById('pjProject').value,
@@ -675,7 +1391,8 @@ function header(){
     boring  : document.getElementById('pjBoring').value,
     tested  : document.getElementById('pjTested').value,
     check   : document.getElementById('pjCheck').value,
-    date    : document.getElementById('pjDate').value
+    date    : document.getElementById('pjDate').value,
+    totalDepth: document.getElementById('pjTotalDepth').value
   };
 }
 
@@ -749,7 +1466,73 @@ function exportExcel(){
         });
       });
 
-      html += `</table></body></html>`;
+      html += `</table><br><br>`;
+
+      // --- SECTION 3 : ATTERBERG'S LIMITS ---
+      html += `<h2>ATTERBERG'S LIMITS</h2>`;
+      html += `<table>`;
+      html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td></tr>`;
+      html += `<tr style="height:10px;"><td colspan="7"></td></tr>`;
+      html += `<tr class="hdr"><td>รายการ</td>`;
+      ATT.forEach((s,i)=> html += `<td>Sample ${i+1}</td>`);
+      html += `</tr>`;
+      ATT_ROWS.forEach(row=>{
+        html += `<tr><td><b>${row.n}. ${row.label}</b> ${row.unit}</td>`;
+        ATT.forEach(s=>{
+          const c = calcAtterberg(s);
+          const val = row.type==='calc' ? (c[row.key]??'') : (s[row.key]??'');
+          const cls = row.type==='calc' ? 'calc' : 'input';
+          html += `<td class="${cls}">${val}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</table><br><br>`;
+
+      // --- SECTION 4 : UNCONFINED COMPRESSION TEST ---
+      UCT.forEach((t,ti)=>{
+        const sum = calcUCTSummary(t);
+        html += `<h2>UNCONFINED COMPRESSION TEST — Sample ${t.no||ti+1}</h2>`;
+        html += `<table>`;
+        html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="2"><b>LOCATION:</b> ${H.location}</td><td><b>BORING NO.:</b> ${H.boring}</td></tr>`;
+        html += `<tr><td><b>Sample No.</b></td><td>${t.no??''}</td><td><b>Depth (m.)</b></td><td>${t.depth??''}</td><td><b>Soil Sample</b></td><td>${t.soilType??''}</td></tr>`;
+        html += `<tr><td><b>Strain Rate</b></td><td>${t.strainRate??''} mm/min.</td><td><b>Load Scale K</b></td><td>${t.K??''}</td><td><b>Height,h / Diameter,D</b></td><td>${t.H??''} / ${t.D??''} cm.</td></tr>`;
+        html += `<tr><td><b>Container No.</b></td><td>${t.cont??''}</td><td><b>Wet Soil+Cont.</b></td><td>${t.b??''}</td><td><b>Dry Soil+Cont. / Cont.</b></td><td>${t.c??''} / ${t.a??''}</td></tr>`;
+        html += `<tr style="height:6px;"><td colspan="6"></td></tr>`;
+        html += `<tr class="subhdr"><td>Deformation Dial, R</td><td>Load Dial, Q</td><td>Axial Strain, E</td><td>Corrected Area, A'</td><td>Deviator Load, P</td><td>Deviator Stress</td></tr>`;
+        UCT_R.forEach((R,i)=>{
+          const c = calcUCTRow(t,R,t.Q[i]);
+          html += `<tr><td class="center">${R}</td><td class="input center">${t.Q[i]??''}</td>
+            <td class="center">${c.strain??''}</td><td class="center">${c.corrArea??''}</td>
+            <td class="center">${c.load??''}</td><td class="calc"><b>${c.stress??''}</b></td></tr>`;
+        });
+        html += `<tr><td colspan="5"><b>Unconfined Compressive Strength (qu)</b></td><td class="calc"><b>${sum.qu??''} t/m²</b></td></tr>`;
+        html += `<tr><td colspan="5"><b>Undrained Shear Strength (Su)</b></td><td class="calc"><b>${sum.su??''} t/m²</b></td></tr>`;
+        html += `<tr><td colspan="5"><b>Wet / Dry Unit Weight (γt / γd)</b></td><td class="calc">${sum.gt??''} / ${sum.gd??''} t/m³</td></tr>`;
+        html += `</table><br><br>`;
+      });
+
+      // --- SECTION 5 : SUMMARY OF TEST RESULTS ---
+      html += `<h2>SUMMARY OF TEST RESULTS</h2>`;
+      html += `<table>`;
+      html += `<tr><td colspan="3"><b>PROJECT:</b> ${H.project}</td><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td><td><b>TESTED BY:</b> ${H.tested}</td><td><b>DATE:</b> ${H.date}</td></tr>`;
+      html += `<tr><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>TOTAL DEPTH:</b> ${H.totalDepth}</td><td><b>CHECKED BY:</b> ${H.check}</td><td></td></tr>`;
+      html += `<tr style="height:6px;"><td colspan="7"></td></tr>`;
+      html += `<tr class="subhdr">`;
+      SUM_COLS.forEach(c=> html += `<td>${c.label.replace('<br>',' ')} ${c.unit?`(${c.unit})`:''}</td>`);
+      html += `</tr>`;
+      SUM.forEach(s=>{
+        const calc = calcSummaryRow(s);
+        html += `<tr>`;
+        SUM_COLS.forEach(c=>{
+          if(c.key==='pi') html += `<td class="calc center">${show(calc.pi)}</td>`;
+          else if(c.key==='uscs') html += `<td class="input center">${s.uscs || calc.uscsAuto || ''}</td>`;
+          else html += `<td class="input center">${show(s[c.key])}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</table><br><br>`;
+
+      html += `</body></html>`;
 
       const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' });
       const url = URL.createObjectURL(blob);
@@ -779,6 +1562,7 @@ function switchTab(name){
     b.className = 'tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition ' + (on ? 'bg-[#1d2772] text-white shadow' : 'text-slate-500 hover:bg-slate-100');
   });
   if(name==='chart') buildChart();
+  if(name==='uct') buildUCTChart();
 }
 
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
@@ -831,6 +1615,37 @@ function clearAllSV(){
     toast('ล้างข้อมูล Sieve Analysis แล้ว');
   });
 }
+function clearAllATT(){
+  Swal.fire({
+    icon:'warning', title:"ล้างข้อมูล Atterberg's Limits ทั้งหมด?",
+    text:'จะลบข้อมูลทุกตัวอย่างในตารางนี้ และรูปภาพที่อัปโหลดไว้ทั้งหมด',
+    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+  }).then(r=>{
+    if(!r.isConfirmed) return;
+    ATT = [{no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}];
+    IMG.att = [];
+    document.getElementById('fileATT').value = '';
+    renderPrev('prevATT','att');
+    renderATT();
+    toast("ล้างข้อมูล Atterberg's Limits แล้ว");
+  });
+}
+function clearAllUCT(){
+  Swal.fire({
+    icon:'warning', title:'ล้างข้อมูล Unconfined Compression Test ทั้งหมด?',
+    text:'จะลบข้อมูลตัวอย่างทั้งหมดกลับเหลือ 1 หน้าว่าง และรูปภาพที่อัปโหลดไว้ทั้งหมด',
+    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+  }).then(r=>{
+    if(!r.isConfirmed) return;
+    UCT = [newUCT()];
+    uctIdx = 0;
+    IMG.uct = [];
+    document.getElementById('fileUCT').value = '';
+    renderPrev('prevUCTImg','uct');
+    renderUCT();
+    toast('ล้างข้อมูล Unconfined Compression Test แล้ว');
+  });
+}
 
 document.getElementById('btnSettings').onclick = ()=>openSettings();
 document.getElementById('btnExport').onclick = exportExcel;
@@ -844,11 +1659,40 @@ document.getElementById('addSV').onclick = ()=>{ SV.push({no:String(SV.length+1)
 document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
 document.getElementById('clrUW').onclick = clearAllUW;
 document.getElementById('clrSV').onclick = clearAllSV;
+document.getElementById('addATT').onclick = ()=>{ ATT.push({no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}); renderATT(); };
+document.getElementById('delATT').onclick = ()=>{ if(ATT.length>1){ATT.pop(); renderATT();} };
+document.getElementById('clrATT').onclick = clearAllATT;
+document.getElementById('prevUCT').onclick = ()=>{ if(uctIdx>0){uctIdx--; renderUCT();} };
+document.getElementById('nextUCT').onclick = ()=>{ if(uctIdx<UCT.length-1){uctIdx++; renderUCT();} };
+document.getElementById('addUCT').onclick = ()=>{ UCT.push(newUCT()); uctIdx = UCT.length-1; renderUCT(); };
+document.getElementById('delUCT').onclick = ()=>{
+  if(UCT.length>1){ UCT.splice(uctIdx,1); if(uctIdx>=UCT.length) uctIdx=UCT.length-1; renderUCT(); }
+};
+document.getElementById('clrUCT').onclick = clearAllUCT;
+document.getElementById('addSUM').onclick = ()=>{ SUM.push({no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}); renderSUM(); };
+document.getElementById('delSUM').onclick = ()=>{ if(SUM.length>1){SUM.pop(); renderSUM();} };
+document.getElementById('clrSUM').onclick = ()=>{
+  Swal.fire({
+    icon:'warning', title:'ล้างข้อมูล Summary ทั้งหมด?',
+    text:'จะลบข้อมูลทุกตัวอย่างในตารางนี้',
+    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+  }).then(r=>{
+    if(!r.isConfirmed) return;
+    SUM = [{no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}];
+    renderSUM();
+    toast('ล้างข้อมูล Summary แล้ว');
+  });
+};
+document.getElementById('syncSUM').onclick = syncSummaryFromModules;
 
 bindDrop('dzUW','fileUW','prevUW','uw');
 bindDrop('dzSV','fileSV','prevSV','sv');
+bindDrop('dzATT','fileATT','prevATT','att');
+bindDrop('dzUCT','fileUCT','prevUCTImg','uct');
 document.getElementById('ocrUW').addEventListener('click', runOcrUW);
 document.getElementById('ocrSV').addEventListener('click', runOcrSV);
+document.getElementById('ocrATT').addEventListener('click', runOcrATT);
+document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
 
 SIEVES.forEach(s=>{
   const o=document.createElement('option'); o.value=s.name; o.textContent=s.name;
@@ -859,6 +1703,9 @@ switchTab('uw');
 renderUW();
 syncSieveFromUW(true);
 buildChart();
+renderATT();
+renderUCT();
+renderSUM();
 </script>
 </body>
 </html>
