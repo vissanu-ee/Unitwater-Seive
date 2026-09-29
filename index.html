@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.bare.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
 
 <script>
@@ -1040,17 +1041,21 @@ function refreshUCTCalcOnly(){
 }
 
 let uctChart=null;
-function buildUCTChart(){
-  const t = UCT[uctIdx];
-  const ctx = document.getElementById('uctChart');
+function computeUCTChartData(t){
   const pts = UCT_R.map((R,i)=>{
     const qRaw = t.Q[i];
     if(qRaw===''||qRaw===null||qRaw===undefined) return null; // ยังไม่ได้กรอกแถวนี้ ไม่ต้องพลอตจุด
     const c = calcUCTRow(t,R,qRaw);
     return (c.strain!==null && c.stress!==null) ? {x:r2(c.strain*100), y:c.stress} : null;
   }).filter(p=>p);
-
   const su = calcUCTSummary(t).su;
+  return {pts, su};
+}
+
+function buildUCTChart(){
+  const t = UCT[uctIdx];
+  const ctx = document.getElementById('uctChart');
+  const {pts, su} = computeUCTChartData(t);
 
   if(uctChart) uctChart.destroy();
   uctChart = new Chart(ctx,{
@@ -1071,7 +1076,39 @@ function buildUCTChart(){
       },
       plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
     }
+
   });
+}
+
+function renderUCTChartImage(t, w=640, h=360){
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const {pts, su} = computeUCTChartData(t);
+  const ch = new Chart(tmp, {
+    type:'line',
+    data:{datasets:[
+      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
+       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
+       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
+      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
+       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
+       borderColor:'#ff0000', backgroundColor:'#ff0000'}
+    ]},
+    options:{
+      responsive:false, animation:false, devicePixelRatio:2,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}},
+        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}}
+      },
+      plugins:{
+        legend:{position:'bottom'},
+        title:{display:true, text:`UNCONFINED COMPRESSION TEST — Sample ${t.no||'-'}`}
+      }
+    }
+  });
+  const dataUrl = tmp.toDataURL('image/png');
+  ch.destroy();
+  return dataUrl;
 }
 
 /* =====================================================================
@@ -1104,9 +1141,32 @@ function buildChart(){
   });
 }
 
-/* =====================================================================
-   FILE UPLOAD & OCR
-   ===================================================================== */
+function renderGSDChartImage(w=640, h=360){
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const datasets = SV.map((s,i)=>{
+    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
+                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
+    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
+            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:3};
+  }).filter(d=>d.data.length);
+  if(!datasets.length) return null;
+  const ch = new Chart(tmp,{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:false, animation:false, devicePixelRatio:2,
+      scales:{
+        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}},
+        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}}
+      },
+      plugins:{legend:{position:'bottom'}, title:{display:true,text:'GRAIN SIZE DISTRIBUTION CURVE'}}
+    }
+  });
+  const dataUrl = tmp.toDataURL('image/png');
+  ch.destroy();
+  return dataUrl;
+}
 const IMG = {uw:[], sv:[], att:[], uct:[]};
 function bindDrop(dzId, inputId, prevId, bucket){
   const dz = document.getElementById(dzId), fi = document.getElementById(inputId);
@@ -1396,158 +1456,205 @@ function header(){
   };
 }
 
-function exportExcel(){
+const XBORDER = {top:{style:'thin',color:{argb:'FFB0B0B0'}},left:{style:'thin',color:{argb:'FFB0B0B0'}},
+                  bottom:{style:'thin',color:{argb:'FFB0B0B0'}},right:{style:'thin',color:{argb:'FFB0B0B0'}}};
+const xFill = argb => ({type:'pattern',pattern:'solid',fgColor:{argb}});
+const X_HDR  = xFill('FF0F185A'), X_SUB = xFill('FF1D2772'), X_CALC = xFill('FFE7F6EF'), X_INPUT = xFill('FFFFFDF2');
+const X_WHITE_BOLD = {color:{argb:'FFFFFFFF'}, bold:true};
+const X_CALC_FONT  = {color:{argb:'FF1B6B4C'}, bold:true};
+
+// เขียน 1 แถว จาก array ของ {v, span, fill, font, align, wrap} — คืนค่าแถวถัดไป
+function xRow(ws, r, items){
+  let c = 1;
+  items.forEach(it=>{
+    const span = it.span || 1;
+    const cell = ws.getCell(r, c);
+    cell.value = (it.v ?? '');
+    cell.border = XBORDER;
+    cell.alignment = {vertical:'middle', horizontal: it.align || 'left', wrapText: !!it.wrap};
+    if(it.font) cell.font = it.font;
+    if(it.fill) cell.fill = it.fill;
+    if(span > 1) ws.mergeCells(r, c, r, c + span - 1);
+    c += span;
+  });
+  return r + 1;
+}
+function xImage(wb, ws, dataUrl, r, colSpan, widthPx=640, heightPx=360){
+  if(!dataUrl) return r;
+  const base64 = dataUrl.split(',')[1];
+  const imgId = wb.addImage({base64, extension:'png'});
+  ws.addImage(imgId, {tl:{col:0, row:r-1}, ext:{width:widthPx, height:heightPx}});
+  return r + Math.ceil(heightPx/20) + 1; // เว้นแถวให้พอกับความสูงรูป (ประมาณ 20px/แถว)
+}
+
+async function exportExcel(){
   Swal.fire({title:'กำลังสร้างไฟล์ Excel พร้อมจัดสไตล์...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
-  setTimeout(()=>{
-    try {
-      const H = header();
-      
-      let html = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head><meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; font-family: 'Sarabun', sans-serif; font-size: 10pt; }
-          th, td { border: .5pt solid #b0b0b0; padding: 5px 8px; vertical-align: middle; }
-          .hdr { background-color: #0f185a; color: #ffffff; font-weight: bold; text-align: center; }
-          .subhdr { background-color: #1d2772; color: #ffffff; font-weight: bold; text-align: center; }
-          .calc { background-color: #e7f6ef; color: #1b6b4c; font-weight: bold; text-align: center; }
-          .input { background-color: #fffdf2; text-align: center; }
-          .center { text-align: center; }
-        </style>
-        </head>
-        <body>
-      `;
+  try {
+    await new Promise(res=>setTimeout(res, 50)); // ให้ loading spinner แสดงก่อนเริ่มงานหนัก
+    const H = header();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Ten Consultants Co., Ltd.';
 
-      // --- SECTION 1 : UNIT WEIGHT ---
-      html += `<h2>UNIT WEIGHT & WATER CONTENT DETERMINATION</h2>`;
-      html += `<table>`;
-      html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>JOB NO.:</b> ${H.job}</td></tr>`;
-      html += `<tr><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td><td colspan="3"><b>TESTED BY:</b> ${H.tested}</td><td colspan="2"><b>DATE:</b> ${H.date}</td></tr>`;
-      html += `<tr style="height:10px;"><td colspan="7"></td></tr>`;
-      
-      html += `<tr class="hdr"><td>รายการ</td>`;
-      UW.forEach((s,i)=> html += `<td>Sample ${i+1}</td>`);
-      html += `</tr>`;
-
+    // ===================== SHEET 1 : UNIT WEIGHT & WATER CONTENT =====================
+    {
+      const ws = wb.addWorksheet('UNIT WEIGHT-WATER CONTENT', {views:[{showGridLines:false}]});
+      ws.getColumn(1).width = 36;
+      UW.forEach((_,i)=> ws.getColumn(i+2).width = 14);
+      let r = 1;
+      r = xRow(ws, r, [{v:'UNIT WEIGHT & WATER CONTENT DETERMINATION', span:1+UW.length, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}`, span:Math.ceil((1+UW.length)/2)},{v:`LOCATION: ${H.location}`, span:Math.floor((1+UW.length)/2)}]);
+      r = xRow(ws, r, [{v:`BORING NO.: ${H.boring}`},{v:`TESTED BY: ${H.tested}`},{v:`DATE: ${H.date}`, span:Math.max(1,UW.length-1)}]);
+      r++;
+      r = xRow(ws, r, [{v:'รายการ', fill:X_HDR, font:X_WHITE_BOLD, align:'center'}, ...UW.map((_,i)=>({v:`Sample ${i+1}`, fill:X_HDR, font:X_WHITE_BOLD, align:'center'}))]);
       UW_ROWS.forEach(row=>{
-        html += `<tr><td><b>${row.n}. ${row.label}</b> ${row.unit}</td>`;
+        const cells = [{v:`${row.n}. ${row.label} ${row.unit}`, font:{bold:true}}];
         UW.forEach(s=>{
           const c = calcUW(s);
-          const val = row.type==='calc' ? (c[row.key]??'') : (s[row.key]??'');
-          const cls = row.type==='calc' ? 'calc' : 'input';
-          html += `<td class="${cls}">${val}</td>`;
+          const val = row.type==='calc' ? (c[row.key] ?? '') : (s[row.key] ?? '');
+          cells.push({v:val, fill: row.type==='calc' ? X_CALC : X_INPUT, font: row.type==='calc'?X_CALC_FONT:undefined, align:'center'});
         });
-        html += `</tr>`;
+        r = xRow(ws, r, cells);
       });
-      html += `</table><br><br>`;
+    }
 
-      // --- SECTION 2 : SIEVE ANALYSIS ---
-      html += `<h2>SIEVE ANALYSIS</h2>`;
-      html += `<table>`;
-      html += `<tr><td colspan="8"><b>PROJECT:</b> ${H.project} | <b>Location:</b> ${H.location} | <b>Boring No.:</b> ${H.boring}</td></tr>`;
-      html += `<tr style="height:10px;"><td colspan="8"></td></tr>`;
-      html += `<tr class="subhdr"><td>Sample No.</td><td>Dish No.</td><td>Sieve No.</td><td>Size (mm)</td><td>Retained (gm)</td><td>cum. wt. retained</td><td>% retained</td><td>% Finer</td></tr>`;
-
+    // ===================== SHEET 2 : SIEVE ANALYSIS =====================
+    {
+      const ws = wb.addWorksheet('SIEVE ANALYSIS', {views:[{showGridLines:false}]});
+      [26,16,14,14,14,16,12,12].forEach((w,i)=> ws.getColumn(i+1).width = w);
+      let r = 1;
+      r = xRow(ws, r, [{v:'SIEVE ANALYSIS', span:8, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:8}]);
+      r++;
+      r = xRow(ws, r, ['Sample No.','Dish No.','Sieve No.','Size (mm)','Retained (gm)','cum. wt. retained','% retained','% Finer']
+        .map(v=>({v, fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
       SV.forEach(s=>{
         const {rows} = calcSieve(s);
-        rows.forEach((r,k)=>{
-          html += `<tr>`;
-          if(k===0){
-            html += `<td rowspan="${rows.length}" class="center">${s.no}</td>`;
-            html += `<td rowspan="${rows.length}" class="center">${s.dish}</td>`;
-          }
-          html += `<td class="center">${r.sieve}</td>`;
-          html += `<td class="center">${r.mm}</td>`;
-          html += `<td class="input center">${r.f??''}</td>`;
-          html += `<td class="center">${r.g??''}</td>`;
-          html += `<td class="calc">${r.h??''}</td>`;
-          html += `<td class="calc"><b>${r.i??''}</b></td>`;
-          html += `</tr>`;
+        const startRow = r;
+        rows.forEach((row,k)=>{
+          r = xRow(ws, r, [
+            {v: k===0 ? s.no : '', align:'center'},
+            {v: k===0 ? s.dish : '', align:'center'},
+            {v: row.sieve, align:'center'},
+            {v: row.mm, align:'center'},
+            {v: row.f ?? '', fill:X_INPUT, align:'center'},
+            {v: row.g ?? '', align:'center'},
+            {v: row.h ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},
+            {v: row.i ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}
+          ]);
         });
+        if(rows.length>1){ ws.mergeCells(startRow,1,startRow+rows.length-1,1); ws.mergeCells(startRow,2,startRow+rows.length-1,2); }
       });
+      r++;
+      xImage(wb, ws, renderGSDChartImage(), r, 8);
+    }
 
-      html += `</table><br><br>`;
-
-      // --- SECTION 3 : ATTERBERG'S LIMITS ---
-      html += `<h2>ATTERBERG'S LIMITS</h2>`;
-      html += `<table>`;
-      html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td></tr>`;
-      html += `<tr style="height:10px;"><td colspan="7"></td></tr>`;
-      html += `<tr class="hdr"><td>รายการ</td>`;
-      ATT.forEach((s,i)=> html += `<td>Sample ${i+1}</td>`);
-      html += `</tr>`;
+    // ===================== SHEET 3 : ATTERBERG'S LIMITS =====================
+    {
+      const ws = wb.addWorksheet("ATTERBERG'S LIMITS", {views:[{showGridLines:false}]});
+      ws.getColumn(1).width = 34;
+      ATT.forEach((_,i)=> ws.getColumn(i+2).width = 14);
+      let r = 1;
+      r = xRow(ws, r, [{v:"ATTERBERG'S LIMITS", span:1+ATT.length, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:1+ATT.length}]);
+      r++;
+      r = xRow(ws, r, [{v:'รายการ', fill:X_HDR, font:X_WHITE_BOLD, align:'center'}, ...ATT.map((_,i)=>({v:`Sample ${i+1}`, fill:X_HDR, font:X_WHITE_BOLD, align:'center'}))]);
       ATT_ROWS.forEach(row=>{
-        html += `<tr><td><b>${row.n}. ${row.label}</b> ${row.unit}</td>`;
+        const cells = [{v:`${row.n}. ${row.label} ${row.unit}`, font:{bold:true}}];
         ATT.forEach(s=>{
           const c = calcAtterberg(s);
-          const val = row.type==='calc' ? (c[row.key]??'') : (s[row.key]??'');
-          const cls = row.type==='calc' ? 'calc' : 'input';
-          html += `<td class="${cls}">${val}</td>`;
+          const val = row.type==='calc' ? (c[row.key] ?? '') : (s[row.key] ?? '');
+          cells.push({v:val, fill: row.type==='calc' ? X_CALC : X_INPUT, font: row.type==='calc'?X_CALC_FONT:undefined, align:'center'});
         });
-        html += `</tr>`;
+        r = xRow(ws, r, cells);
       });
-      html += `</table><br><br>`;
+    }
 
-      // --- SECTION 4 : UNCONFINED COMPRESSION TEST ---
+    // ===================== SHEET 4 : UNCONFINED COMPRESSION TEST =====================
+    {
+      const ws = wb.addWorksheet('UNCONFINED COMPRESSION TEST', {views:[{showGridLines:false}]});
+      [26,16,26,16,26,16].forEach((w,i)=> ws.getColumn(i+1).width = w);
+      let r = 1;
+      r = xRow(ws, r, [{v:'UNCONFINED COMPRESSION TEST', span:6, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:6}]);
+
       UCT.forEach((t,ti)=>{
         const sum = calcUCTSummary(t);
-        html += `<h2>UNCONFINED COMPRESSION TEST — Sample ${t.no||ti+1}</h2>`;
-        html += `<table>`;
-        html += `<tr><td colspan="2"><b>PROJECT:</b> ${H.project}</td><td colspan="2"><b>LOCATION:</b> ${H.location}</td><td><b>BORING NO.:</b> ${H.boring}</td></tr>`;
-        html += `<tr><td><b>Sample No.</b></td><td>${t.no??''}</td><td><b>Depth (m.)</b></td><td>${t.depth??''}</td><td><b>Soil Sample</b></td><td>${t.soilType??''}</td></tr>`;
-        html += `<tr><td><b>Strain Rate</b></td><td>${t.strainRate??''} mm/min.</td><td><b>Load Scale K</b></td><td>${t.K??''}</td><td><b>Height,h / Diameter,D</b></td><td>${t.H??''} / ${t.D??''} cm.</td></tr>`;
-        html += `<tr><td><b>Container No.</b></td><td>${t.cont??''}</td><td><b>Wet Soil+Cont.</b></td><td>${t.b??''}</td><td><b>Dry Soil+Cont. / Cont.</b></td><td>${t.c??''} / ${t.a??''}</td></tr>`;
-        html += `<tr style="height:6px;"><td colspan="6"></td></tr>`;
-        html += `<tr class="subhdr"><td>Deformation Dial, R</td><td>Load Dial, Q</td><td>Axial Strain, E</td><td>Corrected Area, A'</td><td>Deviator Load, P</td><td>Deviator Stress</td></tr>`;
-        UCT_R.forEach((R,i)=>{
-          const c = calcUCTRow(t,R,t.Q[i]);
-          html += `<tr><td class="center">${R}</td><td class="input center">${t.Q[i]??''}</td>
-            <td class="center">${c.strain??''}</td><td class="center">${c.corrArea??''}</td>
-            <td class="center">${c.load??''}</td><td class="calc"><b>${c.stress??''}</b></td></tr>`;
-        });
-        html += `<tr><td colspan="5"><b>Unconfined Compressive Strength (qu)</b></td><td class="calc"><b>${sum.qu??''} t/m²</b></td></tr>`;
-        html += `<tr><td colspan="5"><b>Undrained Shear Strength (Su)</b></td><td class="calc"><b>${sum.su??''} t/m²</b></td></tr>`;
-        html += `<tr><td colspan="5"><b>Wet / Dry Unit Weight (γt / γd)</b></td><td class="calc">${sum.gt??''} / ${sum.gd??''} t/m³</td></tr>`;
-        html += `</table><br><br>`;
-      });
+        r++;
+        r = xRow(ws, r, [{v:`ตัวอย่างที่ ${ti+1} — Sample ${t.no || ti+1}`, span:6, fill:X_HDR, font:X_WHITE_BOLD}]);
+        r = xRow(ws, r, [{v:'Sample No.',font:{bold:true}},{v:t.no ?? ''},{v:'Depth (m.)',font:{bold:true}},{v:t.depth ?? ''},{v:'Soil Sample',font:{bold:true}},{v:t.soilType ?? ''}]);
+        r = xRow(ws, r, [{v:'Strain Rate',font:{bold:true}},{v:`${t.strainRate ?? ''} mm/min.`},{v:'Load Scale K',font:{bold:true}},{v:t.K ?? ''},{v:''},{v:''}]);
 
-      // --- SECTION 5 : SUMMARY OF TEST RESULTS ---
-      html += `<h2>SUMMARY OF TEST RESULTS</h2>`;
-      html += `<table>`;
-      html += `<tr><td colspan="3"><b>PROJECT:</b> ${H.project}</td><td colspan="2"><b>BORING NO.:</b> ${H.boring}</td><td><b>TESTED BY:</b> ${H.tested}</td><td><b>DATE:</b> ${H.date}</td></tr>`;
-      html += `<tr><td colspan="3"><b>LOCATION:</b> ${H.location}</td><td colspan="2"><b>TOTAL DEPTH:</b> ${H.totalDepth}</td><td><b>CHECKED BY:</b> ${H.check}</td><td></td></tr>`;
-      html += `<tr style="height:6px;"><td colspan="7"></td></tr>`;
-      html += `<tr class="subhdr">`;
-      SUM_COLS.forEach(c=> html += `<td>${c.label.replace('<br>',' ')} ${c.unit?`(${c.unit})`:''}</td>`);
-      html += `</tr>`;
+        r = xRow(ws, r, [{v:'SOIL SPECIMEN MEASUREMENTS', span:6, fill:X_SUB, font:X_WHITE_BOLD}]);
+        r = xRow(ws, r, [{v:'Height, h (cm.)'},{v:t.H ?? '', fill:X_INPUT, align:'center'},{v:'Diameter, D (cm.)'},{v:t.D ?? '', fill:X_INPUT, align:'center'},{v:'Area, A (cm²)'},{v:sum.area ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        r = xRow(ws, r, [{v:'Volume, V=A.h (cm³)'},{v:sum.vol ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Wt. Soil+Split Former (g)'},{v:t.soilSplitFormer ?? '-', fill:X_INPUT, align:'center'},{v:'Wt. Split Former (g)'},{v:t.splitFormer ?? '-', fill:X_INPUT, align:'center'}]);
+        r = xRow(ws, r, [{v:'Weight of Soil, W (g)'},{v:sum.W ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Wet Unit Weight, γt (t/m³)'},{v:sum.gt ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Dry Unit Weight, γd (t/m³)'},{v:sum.gd ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+
+        r = xRow(ws, r, [{v:'WATER CONTENT DETERMINATION', span:6, fill:X_SUB, font:X_WHITE_BOLD}]);
+        r = xRow(ws, r, [{v:'Container No.'},{v:t.cont ?? '', fill:X_INPUT, align:'center'},{v:'Wt. Wet Soil+Container (g)'},{v:t.b ?? '', fill:X_INPUT, align:'center'},{v:'Wt. Dry Soil+Container (g)'},{v:t.c ?? '', fill:X_INPUT, align:'center'}]);
+        r = xRow(ws, r, [{v:'Weight of Container (g)'},{v:t.a ?? '', fill:X_INPUT, align:'center'},{v:'Weight of Water (g)'},{v:sum.water ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Weight of Dry Soil (g)'},{v:sum.drySoil ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        r = xRow(ws, r, [{v:'Water Content, w (%)', font:{bold:true}},{v:sum.wc ?? '', span:5, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+
+        r++;
+        r = xRow(ws, r, ["Deformation Dial, R","Load Dial, Q","Axial Strain, E","Corrected Area, A'","Deviator Load, P","Deviator Stress"]
+          .map(v=>({v, fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
+        UCT_R.forEach((R,i)=>{
+          const c = calcUCTRow(t, R, t.Q[i]);
+          r = xRow(ws, r, [
+            {v:R, align:'center'},
+            {v:t.Q[i] ?? '', fill:X_INPUT, align:'center'},
+            {v:c.strain ?? '', align:'center'},
+            {v:c.corrArea ?? '', align:'center'},
+            {v:c.load ?? '', align:'center'},
+            {v:c.stress ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}
+          ]);
+        });
+        r = xRow(ws, r, [{v:'Unconfined Compressive Strength (qu)', span:5, font:{bold:true}},{v:`${sum.qu ?? ''} t/m²`, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        r = xRow(ws, r, [{v:'Undrained Shear Strength (Su)', span:5, font:{bold:true}},{v:`${sum.su ?? ''} t/m²`, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        r++;
+        r = xImage(wb, ws, renderUCTChartImage(t), r, 6);
+      });
+    }
+
+    // ===================== SHEET 5 : SUMMARY OF TEST RESULTS =====================
+    {
+      const ws = wb.addWorksheet('SUMMARY', {views:[{showGridLines:false}]});
+      ws.getColumn(1).width = 14;
+      SUM_COLS.forEach((_,i)=> ws.getColumn(i+2).width = 13);
+      const stats = calcSummaryStats();
+      let r = 1;
+      r = xRow(ws, r, [{v:'SUMMARY OF TEST RESULTS', span:SUM_COLS.length, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}`, span:3},{v:`BORING NO.: ${H.boring}`, span:2},{v:`TESTED BY: ${H.tested}`},{v:`DATE: ${H.date}`, span:Math.max(1,SUM_COLS.length-6)}]);
+      r = xRow(ws, r, [{v:`LOCATION: ${H.location}`, span:3},{v:`TOTAL DEPTH: ${H.totalDepth}`, span:2},{v:`CHECKED BY: ${H.check}`},{v:'', span:Math.max(1,SUM_COLS.length-6)}]);
+      r++;
+      r = xRow(ws, r, SUM_COLS.map(c=>({v:`${c.label.replace('<br>',' ')} ${c.unit?`(${c.unit})`:''}`.trim(), fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
       SUM.forEach(s=>{
         const calc = calcSummaryRow(s);
-        html += `<tr>`;
-        SUM_COLS.forEach(c=>{
-          if(c.key==='pi') html += `<td class="calc center">${show(calc.pi)}</td>`;
-          else if(c.key==='uscs') html += `<td class="input center">${s.uscs || calc.uscsAuto || ''}</td>`;
-          else html += `<td class="input center">${show(s[c.key])}</td>`;
-        });
-        html += `</tr>`;
+        r = xRow(ws, r, SUM_COLS.map(c=>{
+          if(c.key==='pi') return {v:show(calc.pi), fill:X_CALC, font:X_CALC_FONT, align:'center'};
+          if(c.key==='uscs') return {v:s.uscs || calc.uscsAuto || '', fill:X_INPUT, align:'center'};
+          return {v:show(s[c.key]), fill:X_INPUT, align:'center'};
+        }));
       });
-      html += `</table><br><br>`;
-
-      html += `</body></html>`;
-
-      const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const boringNo = document.getElementById('pjBoring').value || 'BH-1';
-      a.download = `Soil_Lab_Results_${boringNo}.xls`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      Swal.fire({icon:'success',title:'ดาวน์โหลดไฟล์สำเร็จ',text:a.download,timer:1500,showConfirmButton:false});
-    } catch(err) {
-      Swal.fire({icon:'error', title:'เกิดข้อผิดพลาด', text:err.message});
+      r++;
+      r = xRow(ws, r, [{v:'', span:1},{v:'Min', fill:X_SUB, font:X_WHITE_BOLD, align:'center'},{v:'Max', fill:X_SUB, font:X_WHITE_BOLD, align:'center'}]);
+      r = xRow(ws, r, [{v:'Wn (%)'},{v:show(stats.wnMin), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:show(stats.wnMax), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+      r = xRow(ws, r, [{v:'qu (t/m²)'},{v:show(stats.quMin), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:show(stats.quMax), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
     }
-  },200);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const boringNo = document.getElementById('pjBoring').value || 'BH-1';
+    a.download = `Soil_Lab_Results_${boringNo}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    Swal.fire({icon:'success',title:'ดาวน์โหลดไฟล์สำเร็จ',text:a.download,timer:1500,showConfirmButton:false});
+  } catch(err) {
+    Swal.fire({icon:'error', title:'เกิดข้อผิดพลาด', text:err.message});
+  }
 }
 
 /* =====================================================================
