@@ -1176,13 +1176,58 @@ function bindDrop(dzId, inputId, prevId, bucket){
   dz.addEventListener('drop', e=>handleFiles(e.dataTransfer.files, prevId, bucket));
   fi.addEventListener('change', e=>handleFiles(e.target.files, prevId, bucket));
 }
-function handleFiles(files, prevId, bucket){
-  [...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{
+async function compressImage(file, maxSize = 1600, quality = 0.72){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
     const rd = new FileReader();
-    rd.onload = ev=>{ IMG[bucket].push({name:f.name, data:ev.target.result}); renderPrev(prevId, bucket); };
-    rd.readAsDataURL(f);
+
+    rd.onload = ev=>{
+      img.onload = ()=>{
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxSize / Math.max(w, h));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', {alpha:false});
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Re-encode as JPEG to remove metadata and reduce image tokens/payload size.
+        const data = canvas.toDataURL('image/jpeg', quality);
+        resolve({data, width:w, height:h});
+      };
+      img.onerror = ()=>reject(new Error(`ไม่สามารถอ่านรูป ${file.name}`));
+      img.src = ev.target.result;
+    };
+    rd.onerror = ()=>reject(new Error(`ไม่สามารถเปิดรูป ${file.name}`));
+    rd.readAsDataURL(file);
   });
-  toast('อัปโหลดรูปเรียบร้อย','success');
+}
+
+async function handleFiles(files, prevId, bucket){
+  const imageFiles = [...files].filter(f=>f.type.startsWith('image/'));
+  if(!imageFiles.length) return toast('กรุณาเลือกไฟล์รูปภาพ','warning');
+
+  try{
+    // Keep support for multiple images. Each image is resized/compressed first,
+    // then all selected images are still sent together in one Gemini request.
+    const processed = await Promise.all(imageFiles.map(async f=>{
+      const r = await compressImage(f, 1600, 0.72);
+      return {name:f.name, data:r.data, width:r.width, height:r.height};
+    }));
+
+    IMG[bucket].push(...processed);
+    renderPrev(prevId, bucket);
+    toast(`เตรียมรูป ${processed.length} รูปเรียบร้อย (ย่อสูงสุด 1600px / JPEG 72%)`,'success');
+  }catch(err){
+    console.error(err);
+    toast(err.message || 'ไม่สามารถเตรียมรูปภาพได้','error');
+  }
 }
 function renderPrev(prevId, bucket){
   document.getElementById(prevId).innerHTML = IMG[bucket].map((im,i)=>`
@@ -1195,31 +1240,48 @@ function renderPrev(prevId, bucket){
 /* =====================================================================
    AI OCR (Gemini Vision) — อ่านค่าตัวเลขจากรูปภาพ/สแกนผลทดสอบ
    ===================================================================== */
-async function callGemini(imgs, promptText){
+async function callGemini(imgs, promptText, maxOutputTokens = 1536){
   if(!CFG.GEM_KEY) throw new Error('NO_KEY');
   const parts = [{text: promptText}];
+
   imgs.forEach(im=>{
     const m = String(im.data).match(/^data:(.*?);base64,(.*)$/);
     if(!m) return;
     parts.push({inline_data:{mime_type:m[1], data:m[2]}});
   });
+
   const body = JSON.stringify({
     contents:[{role:'user', parts}],
-    generationConfig:{ responseMimeType:'application/json', temperature:0 }
+    generationConfig:{
+      responseMimeType:'application/json',
+      temperature:0,
+      maxOutputTokens
+    }
   });
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${CFG.GEM_KEY}`;
 
-  const MAX_RETRIES = 3;
+  // Retry only transient/rate-limit errors. Longer exponential backoff avoids
+  // immediately repeating a request while the quota window is still full.
+  const MAX_RETRIES = 2;
   let lastErr;
+
   for(let attempt=0; attempt<=MAX_RETRIES; attempt++){
     let res;
     try{
-      res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+      res = await fetch(url, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body
+      });
     }catch(netErr){
       lastErr = new Error('เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
-      if(attempt<MAX_RETRIES){ await new Promise(r=>setTimeout(r, 1000*(attempt+1))); continue; }
+      if(attempt<MAX_RETRIES){
+        await new Promise(r=>setTimeout(r, 1500 * Math.pow(2, attempt)));
+        continue;
+      }
       throw lastErr;
     }
+
     if(res.ok){
       const data = await res.json();
       const text = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
@@ -1227,19 +1289,26 @@ async function callGemini(imgs, promptText){
       let clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
       return JSON.parse(clean);
     }
+
     const status = res.status;
     const t = await res.text();
-    if((status===503 || status===429 || status>=500) && attempt<MAX_RETRIES){
+
+    if((status===429 || status===503 || status>=500) && attempt<MAX_RETRIES){
       lastErr = new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
-      await new Promise(r=>setTimeout(r, 1500*(attempt+1)));
+      const waitMs = Math.min(10000, 2000 * Math.pow(2, attempt));
+      await new Promise(r=>setTimeout(r, waitMs));
       continue;
+    }
+
+    if(status===429){
+      throw new Error('Gemini API Error (429): โควตาหรืออัตราการเรียกใช้งานเต็มชั่วคราว กรุณารอสักครู่แล้วลองใหม่');
     }
     if(status===503){
       throw new Error('เซิร์ฟเวอร์ Gemini กำลังมีผู้ใช้งานหนาแน่น (503) ลองใหม่อีกครั้งในอีกสักครู่');
     }
     throw new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
   }
-  throw lastErr;
+  throw lastErr || new Error('Gemini API request failed');
 }
 
 async function runOcrUW(){
@@ -1247,24 +1316,14 @@ async function runOcrUW(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNIT WEIGHT & WATER CONTENT', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ UNIT WEIGHT & WATER CONTENT DETERMINATION นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+    const prompt = `Extract raw values from the UNIT WEIGHT & WATER CONTENT test form in the image(s). Return JSON array only. Do not calculate or infer. Use the exact values visible in the image; use null for missing/unreadable values.
 
-สำหรับแต่ละตัวอย่าง (sample) ที่พบในรูป ให้อ่านค่าตามตัวเลขจริงที่ปรากฏในรูปเท่านั้น (ไม่ต้องคำนวณเอง ระบบจะคำนวณค่าที่เหลือ เช่น WT. OF WET SOIL (12-11), WT. OF DRYSOIL (13-11), WT. OF WATER (12-13), WATER CONTENT w=(16/15)*100 ให้อัตโนมัติ) แล้วสร้าง object ที่มี field:
-- "no": SAMPLE NO.
-- "depth": DEPTH (m.) ถ้ามี
-- "D": DIAMETER OF SOIL (cm.) ถ้ามี
-- "H": HEIGHT OF SOIL (cm.) ถ้ามี
-- "soilMold": WT. OF SOIL + MOLD (gm.) ถ้ามี
-- "mold": WT. OF MOLD (gm.) ถ้ามี
-- "cont": CONTAINER NO.
-- "a": 11. WT. OF CONTAINER (gm.)
-- "b": 12. WT. OF WET SOIL + CONTAINER (gm.)
-- "c": 13. WT. OF DRY SOIL + CONTAINER (gm.)
+Fields per sample:
+"no"=SAMPLE NO.; "depth"=DEPTH (m.); "D"=DIAMETER OF SOIL (cm.); "H"=HEIGHT OF SOIL (cm.); "soilMold"=WT. OF SOIL + MOLD (gm.); "mold"=WT. OF MOLD (gm.); "cont"=CONTAINER NO.; "a"=11. WT. OF CONTAINER (gm.); "b"=12. WT. OF WET SOIL + CONTAINER (gm.); "c"=13. WT. OF DRY SOIL + CONTAINER (gm.).
 
-ฟิลด์ตัวเลขที่ไม่มีในรูปให้เว้นว่างหรือ null ตอบกลับเป็น JSON array ล้วนๆ เช่น:
-[{"no":"1","cont":"M-63","a":19.30,"b":109.76,"c":84.14}]`;
+Do not return calculated fields. Example: [{"no":"1","cont":"M-63","a":19.30,"b":109.76,"c":84.14}]`;
 
-    const arr = await callGemini(IMG.uw, prompt);
+    const arr = await callGemini(IMG.uw, prompt, 1200);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankUW = u => !u.no && !u.cont && !u.depth && !u.D && !u.H && !u.soilMold && !u.mold &&
       (u.a===''||u.a===null||u.a===undefined) && (u.b===''||u.b===null||u.b===undefined) && (u.c===''||u.c===null||u.c===undefined);
@@ -1301,17 +1360,12 @@ async function runOcrSV(){
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
     const sieveNames = SIEVES.map(s=>s.name).join(', ');
-    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ SIEVE ANALYSIS นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+    const prompt = `Extract raw SIEVE ANALYSIS values from the image(s). Return JSON array only. Do not calculate or infer. Read only Retained (gm) for sieve sizes actually visible. Use null/omit when unavailable.
 
-สำหรับแต่ละตัวอย่าง (sample) ที่พบในรูป ให้อ่านเฉพาะค่า Retained (gm) ตามตัวเลขจริงในรูปแต่ละขนาดตะแกรง (ไม่ต้องคำนวณ cum. wt. retained, % retained หรือ % Finer เอง ระบบจะดึงค่า a,b,c จากตาราง UNIT WEIGHT ที่ลิงก์กันด้วย CONTAINER/DISH NO. แล้วคำนวณ d=c-a, g=f-a, h=g/(d/100), i=100-h ให้อัตโนมัติ) แล้วสร้าง object ที่มี field:
-- "no": Sample No.
-- "dish": Dish No.
-- "f": object ของค่า Retained (gm) แยกตามขนาดตะแกรง โดยใช้ key จากรายการนี้เท่านั้น (ใส่เฉพาะขนาดที่มีในรูป): ${sieveNames}
+Fields: "no"=Sample No.; "dish"=Dish No.; "f"=object of Retained (gm), using only these sieve keys: ${sieveNames}.
+Do not return cumulative weight, % retained, or % finer; the application calculates them. Example: [{"no":"1","dish":"M-63","f":{"#10":19.67,"#40":22.26,"#100":31.24,"#200":40.43}}]`;
 
-ตอบกลับเป็น JSON array ล้วนๆ เช่น:
-[{"no":"1","dish":"M-63","f":{"#10":19.67,"#40":22.26,"#100":31.24,"#200":40.43}}]`;
-
-    const arr = await callGemini(IMG.sv, prompt);
+    const arr = await callGemini(IMG.sv, prompt, 1200);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankSV = s => !s.no && !s.dish && (!s.f || Object.keys(s.f).length===0);
     const blankQueueSV = SV.map((s,i)=>isBlankSV(s)?i:-1).filter(i=>i>=0);
@@ -1343,23 +1397,13 @@ async function runOcrATT(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:"ATTERBERG'S LIMITS", allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ ATTERBERG'S LIMITS (LIQUID LIMIT / PLASTIC LIMIT) นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON array เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence
+    const prompt = `Extract raw ATTERBERG'S LIMITS values from the image(s). Return JSON array only. Do not calculate or infer; use exact visible values and null when missing/unreadable.
 
-สำหรับแต่ละตัวอย่าง (sample/column) ที่พบในรูป ให้อ่านค่าตามตัวเลขจริงในรูปเท่านั้น (ไม่ต้องคำนวณ Water Content, Liquid Limit, Plastic Limit หรือ Plasticity Index เอง ระบบจะคำนวณให้อัตโนมัติจาก WATER=(b-c), DRY SOIL=(c-a), WATER CONTENT=WATER/DRY SOIL×100, factor=(N/25)^0.12, LL=WATER CONTENT×factor, PI=0.73×(LL-20)+ADJ.WATER, PL=LL-PI) แล้วสร้าง object ที่มี field:
-- "no": Sample No.
-- "depth": Depth M. ถ้ามี
-- "testType": Type of test ถ้ามี
-- "canNo": Can No.
-- "blows": Number of Blows (เป็นตัวเลข เช่น 24 หรือข้อความ เช่น "NP" ถ้าไม่สามารถทดสอบได้)
-- "a": Wt. Can (gm.)
-- "b": Can+Wet soil (gm.)
-- "c": Can+Dry soil (gm.)
-- "adjWater": ค่า Adj. Water ถ้ามีในรูป (ปกติมักเป็น 3 ถ้าไม่ปรากฏให้เว้นว่าง)
+Fields: "no"=Sample No.; "depth"=Depth M.; "testType"=Type of test; "canNo"=Can No.; "blows"=Number of Blows (number or "NP"); "a"=Wt. Can (gm.); "b"=Can+Wet Soil (gm.); "c"=Can+Dry Soil (gm.); "adjWater"=Adj. Water if visible. The application calculates Water Content, LL, PL and PI.
 
-ตอบกลับเป็น JSON array ล้วนๆ เช่น:
-[{"no":"SS-2","blows":24,"canNo":"","a":495,"b":1870,"c":1480,"adjWater":3}]`;
+Example: [{"no":"SS-2","blows":24,"canNo":"","a":495,"b":1870,"c":1480,"adjWater":3}]`;
 
-    const arr = await callGemini(IMG.att, prompt);
+    const arr = await callGemini(IMG.att, prompt, 1200);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankATT = s => !s.no && !s.canNo && !s.blows &&
       (s.a===''||s.a===null||s.a===undefined) && (s.b===''||s.b===null||s.b===undefined) && (s.c===''||s.c===null||s.c===undefined);
@@ -1395,26 +1439,13 @@ async function runOcrUCT(){
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNCONFINED COMPRESSION TEST', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
     const rList = UCT_R.join(', ');
-    const prompt = `ช่วยแปลงข้อมูลจากรูปภาพผลทดสอบ UNCONFINED COMPRESSION TEST นี้ให้เป็นข้อมูลดิบในรูปแบบ JSON object เดียว (ไม่ใช่ array) เท่านั้น ห้ามมีคำอธิบาย ห้ามใส่ markdown fence เนื่องจากหน้านี้คำนวณได้ทีละ 1 ตัวอย่าง/หลุมเจาะเท่านั้น
+    const prompt = `Extract raw UNCONFINED COMPRESSION TEST values from the image(s). Return one JSON object only. Do not calculate or infer. Use exact visible values; use null when missing/unreadable.
 
-อ่านค่าตามตัวเลขจริงในรูปเท่านั้น (ไม่ต้องคำนวณ Area, Volume, Axial Strain, Corrected Area, Deviator Load, Deviator Stress, qu, Su เอง ระบบจะคำนวณให้อัตโนมัติ) โดย object มี field ดังนี้:
-- "no": Sample No.
-- "depth": Depth (เช่น "3.00-3.45")
-- "soilType": Soil Sample (เช่น CLAY)
-- "strainRate": Strain Rate (mm/min.) ถ้ามี
-- "K": ค่าคงที่ Load Scale K (สัมประสิทธิ์คูณกับ Q) ถ้ามี ปกติประมาณ 0.0653
-- "H": Height, h (cm.)
-- "D": Diameter (cm.)
-- "cont": Container No. (สำหรับหาความชื้น)
-- "b": Weight of Wet Soil+Container (g)
-- "c": Weight of Dry Soil+Container (g)
-- "a": Weight of Container (g)
-- "readings": array ของค่าที่อ่านได้จากตาราง Load Dial โดยแต่ละอันมี field "r" (Deformation Dial, R ×0.01mm — ใช้ค่าจากชุดมาตรฐานนี้เท่านั้น: ${rList}) และ "q" (Load Dial, Q ×0.0001in. ตามตัวเลขจริงที่อ่านได้ในแถวนั้น) ใส่เฉพาะแถวที่มีค่า Q จริงในรูป ไม่ต้องใส่แถวที่ว่างเปล่า
+Fields: "no"=Sample No.; "depth"=Depth; "soilType"=Soil Sample; "strainRate"=Strain Rate (mm/min.); "K"=Load Scale K; "H"=Height h (cm.); "D"=Diameter (cm.); "cont"=Container No.; "b"=Wet Soil+Container (g); "c"=Dry Soil+Container (g); "a"=Container (g).
 
-ตอบกลับเป็น JSON object ล้วนๆ เช่น:
-{"no":"ST-1","depth":"3-3.45","soilType":"CLAY","H":7.61,"D":3.76,"cont":"C-72","b":179.49,"c":136.89,"a":18.88,"readings":[{"r":0,"q":0},{"r":10,"q":11},{"r":20,"q":14.5}]}`;
+"readings" must contain only rows with a real Q value: each item has "r" (use only standard R values: ${rList}) and "q" (actual Load Dial Q). Do not return calculated Area, Volume, Strain, Corrected Area, Deviator Load, Deviator Stress, qu or Su. Example: {"no":"ST-1","depth":"3-3.45","soilType":"CLAY","H":7.61,"D":3.76,"cont":"C-72","b":179.49,"c":136.89,"a":18.88,"readings":[{"r":0,"q":0},{"r":10,"q":11},{"r":20,"q":14.5}]}`;
 
-    const obj = await callGemini(IMG.uct, prompt);
+    const obj = await callGemini(IMG.uct, prompt, 3072);
     if(!obj || typeof obj!=='object' || Array.isArray(obj)) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const t = UCT[uctIdx];
     if(obj.no!=null) t.no = obj.no;
