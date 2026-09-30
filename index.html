@@ -1240,7 +1240,7 @@ function renderPrev(prevId, bucket){
 /* =====================================================================
    AI OCR (Gemini Vision) — อ่านค่าตัวเลขจากรูปภาพ/สแกนผลทดสอบ
    ===================================================================== */
-async function callGemini(imgs, promptText, maxOutputTokens = 1536){
+async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = null){
   if(!CFG.GEM_KEY) throw new Error('NO_KEY');
   const parts = [{text: promptText}];
 
@@ -1250,13 +1250,19 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536){
     parts.push({inline_data:{mime_type:m[1], data:m[2]}});
   });
 
+  const generationConfig = {
+    responseMimeType:'application/json',
+    temperature:0,
+    maxOutputTokens,
+    // งาน OCR/สกัดค่าไม่ต้อง "คิดลึก" — thinking tokens ถูกคิดรวมเป็น output token
+    // ปิดไว้เพื่อลด token และเวลาตอบสนอง (ปลอดภัยสำหรับงานอ่านค่าตรงไปตรงมาแบบนี้)
+    thinkingConfig: { thinkingBudget: 0 }
+  };
+  if(schema) generationConfig.responseSchema = schema;
+
   const body = JSON.stringify({
     contents:[{role:'user', parts}],
-    generationConfig:{
-      responseMimeType:'application/json',
-      temperature:0,
-      maxOutputTokens
-    }
+    generationConfig
   });
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${CFG.GEM_KEY}`;
 
@@ -1311,19 +1317,54 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536){
   throw lastErr || new Error('Gemini API request failed');
 }
 
+// Schema สั้นๆ แทนการอธิบาย field เป็นข้อความยาวๆ ใน prompt — ลด token
+// และลดโอกาสตอบ JSON ผิดรูปแบบ (retry แต่ละครั้งคือส่งรูปซ้ำทั้งหมด แพงกว่าข้อความมาก)
+const UW_SCHEMA = {
+  type:"ARRAY", items:{ type:"OBJECT", properties:{
+    no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
+    D:{type:"NUMBER", nullable:true}, H:{type:"NUMBER", nullable:true},
+    soilMold:{type:"NUMBER", nullable:true}, mold:{type:"NUMBER", nullable:true}, cont:{type:"STRING", nullable:true},
+    a:{type:"NUMBER", nullable:true}, b:{type:"NUMBER", nullable:true}, c:{type:"NUMBER", nullable:true}
+  }}
+};
+const SV_SCHEMA = {
+  type:"ARRAY", items:{ type:"OBJECT", properties:{
+    no:{type:"STRING", nullable:true}, dish:{type:"STRING", nullable:true},
+    f:{ type:"ARRAY", description:"Retained (gm) per sieve size actually visible",
+        items:{ type:"OBJECT", properties:{ sieve:{type:"STRING"}, retained:{type:"NUMBER", nullable:true} } } }
+  }}
+};
+const ATT_SCHEMA = {
+  type:"ARRAY", items:{ type:"OBJECT", properties:{
+    no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
+    testType:{type:"STRING", nullable:true}, canNo:{type:"STRING", nullable:true},
+    blows:{type:"STRING", description:"Number or 'NP'", nullable:true},
+    a:{type:"NUMBER", nullable:true}, b:{type:"NUMBER", nullable:true}, c:{type:"NUMBER", nullable:true},
+    adjWater:{type:"NUMBER", nullable:true}
+  }}
+};
+const UCT_SCHEMA = {
+  type:"OBJECT", properties:{
+    no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
+    soilType:{type:"STRING", nullable:true}, strainRate:{type:"STRING", nullable:true},
+    K:{type:"NUMBER", nullable:true}, H:{type:"NUMBER", nullable:true}, D:{type:"NUMBER", nullable:true},
+    cont:{type:"STRING", nullable:true}, b:{type:"NUMBER", nullable:true}, c:{type:"NUMBER", nullable:true}, a:{type:"NUMBER", nullable:true},
+    readings:{ type:"ARRAY", description:"Only rows that have a visible Load Dial (Q) value",
+      items:{ type:"OBJECT", properties:{
+        r:{type:"NUMBER", description:"Deformation Dial R (x0.01mm) — standard series: 0 to 100 step 10, then 120 to 560 step 20"},
+        q:{type:"NUMBER", description:"Load Dial Q (x0.0001in) actually read for that row"}
+      }, required:["r","q"] } }
+  }
+};
+
 async function runOcrUW(){
   if(!IMG.uw.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNIT WEIGHT & WATER CONTENT', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Extract raw values from the UNIT WEIGHT & WATER CONTENT test form in the image(s). Return JSON array only. Do not calculate or infer. Use the exact values visible in the image; use null for missing/unreadable values.
+    const prompt = `Extract raw values per sample from the UNIT WEIGHT & WATER CONTENT form image(s). Use exact visible values; null if missing/unreadable. Do not calculate anything.`;
 
-Fields per sample:
-"no"=SAMPLE NO.; "depth"=DEPTH (m.); "D"=DIAMETER OF SOIL (cm.); "H"=HEIGHT OF SOIL (cm.); "soilMold"=WT. OF SOIL + MOLD (gm.); "mold"=WT. OF MOLD (gm.); "cont"=CONTAINER NO.; "a"=11. WT. OF CONTAINER (gm.); "b"=12. WT. OF WET SOIL + CONTAINER (gm.); "c"=13. WT. OF DRY SOIL + CONTAINER (gm.).
-
-Do not return calculated fields. Example: [{"no":"1","cont":"M-63","a":19.30,"b":109.76,"c":84.14}]`;
-
-    const arr = await callGemini(IMG.uw, prompt, 1200);
+    const arr = await callGemini(IMG.uw, prompt, 1200, UW_SCHEMA);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankUW = u => !u.no && !u.cont && !u.depth && !u.D && !u.H && !u.soilMold && !u.mold &&
       (u.a===''||u.a===null||u.a===undefined) && (u.b===''||u.b===null||u.b===undefined) && (u.c===''||u.c===null||u.c===undefined);
@@ -1359,17 +1400,14 @@ async function runOcrSV(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const sieveNames = SIEVES.map(s=>s.name).join(', ');
-    const prompt = `Extract raw SIEVE ANALYSIS values from the image(s). Return JSON array only. Do not calculate or infer. Read only Retained (gm) for sieve sizes actually visible. Use null/omit when unavailable.
+    const prompt = `Extract raw Retained (gm) values per sample from the SIEVE ANALYSIS image(s), only for sieve sizes actually visible. Do not calculate cumulative weight, % retained, or % finer.`;
 
-Fields: "no"=Sample No.; "dish"=Dish No.; "f"=object of Retained (gm), using only these sieve keys: ${sieveNames}.
-Do not return cumulative weight, % retained, or % finer; the application calculates them. Example: [{"no":"1","dish":"M-63","f":{"#10":19.67,"#40":22.26,"#100":31.24,"#200":40.43}}]`;
-
-    const arr = await callGemini(IMG.sv, prompt, 1200);
+    const arr = await callGemini(IMG.sv, prompt, 1200, SV_SCHEMA);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankSV = s => !s.no && !s.dish && (!s.f || Object.keys(s.f).length===0);
     const blankQueueSV = SV.map((s,i)=>isBlankSV(s)?i:-1).filter(i=>i>=0);
     arr.forEach(item=>{
+      const fObj = Object.fromEntries((Array.isArray(item.f)?item.f:[]).map(x=>[x.sieve, x.retained]).filter(([k,v])=>k!=null && v!=null));
       let idx = SV.findIndex(s=>
         (item.dish && s.dish && String(s.dish).trim()===String(item.dish).trim()) ||
         (item.no && s.no && String(s.no).trim()===String(item.no).trim()));
@@ -1377,9 +1415,9 @@ Do not return cumulative weight, % retained, or % finer; the application calcula
       if(idx>=0){
         SV[idx].no   = item.no ?? SV[idx].no;
         SV[idx].dish = item.dish ?? SV[idx].dish;
-        SV[idx].f    = {...SV[idx].f, ...(item.f||{})};
+        SV[idx].f    = {...SV[idx].f, ...fObj};
       }else{
-        SV.push({no:item.no ?? String(SV.length+1), dish:item.dish ?? '', depth:'', a:null, b:null, c:null, f:item.f||{}});
+        SV.push({no:item.no ?? String(SV.length+1), dish:item.dish ?? '', depth:'', a:null, b:null, c:null, f:fObj});
       }
     });
     syncSieveFromUW(true);
@@ -1397,13 +1435,9 @@ async function runOcrATT(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:"ATTERBERG'S LIMITS", allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Extract raw ATTERBERG'S LIMITS values from the image(s). Return JSON array only. Do not calculate or infer; use exact visible values and null when missing/unreadable.
+    const prompt = `Extract raw values per sample from the ATTERBERG'S LIMITS form image(s). Use exact visible values; null if missing/unreadable. The application calculates Water Content, LL, PL and PI — do not compute them.`;
 
-Fields: "no"=Sample No.; "depth"=Depth M.; "testType"=Type of test; "canNo"=Can No.; "blows"=Number of Blows (number or "NP"); "a"=Wt. Can (gm.); "b"=Can+Wet Soil (gm.); "c"=Can+Dry Soil (gm.); "adjWater"=Adj. Water if visible. The application calculates Water Content, LL, PL and PI.
-
-Example: [{"no":"SS-2","blows":24,"canNo":"","a":495,"b":1870,"c":1480,"adjWater":3}]`;
-
-    const arr = await callGemini(IMG.att, prompt, 1200);
+    const arr = await callGemini(IMG.att, prompt, 1200, ATT_SCHEMA);
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankATT = s => !s.no && !s.canNo && !s.blows &&
       (s.a===''||s.a===null||s.a===undefined) && (s.b===''||s.b===null||s.b===undefined) && (s.c===''||s.c===null||s.c===undefined);
@@ -1438,14 +1472,9 @@ async function runOcrUCT(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNCONFINED COMPRESSION TEST', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const rList = UCT_R.join(', ');
-    const prompt = `Extract raw UNCONFINED COMPRESSION TEST values from the image(s). Return one JSON object only. Do not calculate or infer. Use exact visible values; use null when missing/unreadable.
+    const prompt = `Extract raw values from this UNCONFINED COMPRESSION TEST form for one specimen. Use exact visible values; null if missing/unreadable. Only include reading rows that have a visible Load Dial (Q) value. Do not calculate Area, Volume, Strain, Corrected Area, Deviator Load, Deviator Stress, qu or Su.`;
 
-Fields: "no"=Sample No.; "depth"=Depth; "soilType"=Soil Sample; "strainRate"=Strain Rate (mm/min.); "K"=Load Scale K; "H"=Height h (cm.); "D"=Diameter (cm.); "cont"=Container No.; "b"=Wet Soil+Container (g); "c"=Dry Soil+Container (g); "a"=Container (g).
-
-"readings" must contain only rows with a real Q value: each item has "r" (use only standard R values: ${rList}) and "q" (actual Load Dial Q). Do not return calculated Area, Volume, Strain, Corrected Area, Deviator Load, Deviator Stress, qu or Su. Example: {"no":"ST-1","depth":"3-3.45","soilType":"CLAY","H":7.61,"D":3.76,"cont":"C-72","b":179.49,"c":136.89,"a":18.88,"readings":[{"r":0,"q":0},{"r":10,"q":11},{"r":20,"q":14.5}]}`;
-
-    const obj = await callGemini(IMG.uct, prompt, 3072);
+    const obj = await callGemini(IMG.uct, prompt, 3072, UCT_SCHEMA);
     if(!obj || typeof obj!=='object' || Array.isArray(obj)) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const t = UCT[uctIdx];
     if(obj.no!=null) t.no = obj.no;
