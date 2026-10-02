@@ -390,8 +390,10 @@ const CFG = {
 
 // Gemini API Standard Paid-Tier pricing (USD / 1M tokens).
 // Flash-Lite = low-cost/high-volume OCR; Pro = fallback for difficult OCR.
+// Auto mode records per-model errors so a zero-quota fallback does not hide the earlier error.
 const GEM_PRICING = {
   'gemini-3.1-flash-lite': {name:'Gemini 3.1 Flash-Lite', input:0.25, output:1.50},
+  'gemini-3.5-flash-lite': {name:'Gemini 3.5 Flash-Lite', input:0.25, output:1.50},
   'gemini-3.1-pro-preview': {name:'Gemini 3.1 Pro', input:2.00, output:12.00}
 };
 const GEM_USAGE_KEY = 'gemUsageV6';
@@ -436,6 +438,7 @@ const show = v => (v===null||v===undefined) ? '' : v;
 // Sample collections are intentionally dynamic. There is no 32-sample cap.
 // Excel supports far more than 32 columns/rows; the UI arrays can grow as needed.
 const SAMPLE_CAPACITY_NOTE = 'Dynamic sample capacity: >32 samples supported in every module.';
+function summarySampleKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,''); if(!n)return ''; if(/^\d+$/.test(n))return `N${Number(n)}`; const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i); return m?`N${Number(m[1])}`:`T${n}`; }
 
 let UW = [
   {no:'SS-1',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'M-63',a:19.30,b:109.76,c:84.14},
@@ -487,20 +490,19 @@ let UCT = [{
 let uctIdx = 0;
 
 // Summary of Test Results — 1 borehole per page, sample = 1 row (โครงสร้าง/ตัวอย่างอ้างอิงจาก Summary_อาคารเรียน 3 ชั้น.xls)
-let SUM = [
-  {no:'SS-1', from:1.5,  to:1.95, wn:18.0, ll:26.3, pl:19.4, g4:86.1, g10:79.7, g40:69.0, g100:63.9, g200:62.6, uscs:'CL-ML', pp:'', fv:'', qu:'', gt:'', sptN:26},
-  {no:'ST-1', from:3,    to:3.5,  wn:45.6, ll:55.3, pl:26.0, g4:100,  g10:99.9, g40:99.1, g100:98.1, g200:97.3, uscs:'CH',    pp:'', fv:'', qu:7.78, gt:1.85, sptN:''},
-  {no:'ST-2', from:4.5,  to:5,    wn:56.3, ll:52.5, pl:25.1, g4:99.9, g10:99.9, g40:99.5, g100:98.5, g200:97.7, uscs:'CH',    pp:'', fv:'', qu:4.78, gt:1.62, sptN:''},
-  {no:'ST-3', from:6,    to:6.5,  wn:89.3, ll:55.7, pl:26.3, g4:91.2, g10:79.6, g40:73.4, g100:70.7, g200:70.0, uscs:'CH',    pp:'', fv:'', qu:2.51, gt:1.53, sptN:''},
-  {no:'ST-4', from:7.5,  to:8,    wn:78.9, ll:53.0, pl:26.0, g4:100,  g10:99.7, g40:99.0, g100:97.7, g200:95.9, uscs:'CH',    pp:'', fv:'', qu:3.85, gt:1.56, sptN:''},
-  {no:'SS-2', from:9,    to:9.45, wn:32.6, ll:64.8, pl:30.2, g4:'',   g10:'',   g40:99.97,g100:99.92,g200:99.65,uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:18},
-  {no:'SS-3', from:10.5, to:10.95,wn:23.5, ll:61.5, pl:29.7, g4:99.3, g10:98.8, g40:98.3, g100:97.6, g200:97.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:25},
-  {no:'SS-4', from:12,   to:12.45,wn:20.4, ll:57.5, pl:27.1, g4:94.5, g10:92.0, g40:88.7, g100:87.7, g200:87.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:29},
-  {no:'SS-5', from:13.5, to:13.95,wn:21.2, ll:60.8, pl:29.0, g4:99.9, g10:99.8, g40:99.4, g100:99.1, g200:98.9, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:42},
-  {no:'SS-6', from:15,   to:15.45,wn:20.9, ll:60.1, pl:28.8, g4:92.5, g10:92.0, g40:91.1, g100:90.4, g200:89.6, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:57},
-  {no:'SS-7', from:16.5, to:16.95,wn:21.7, ll:58.8, pl:29.1, g4:99.7, g10:98.2, g40:96.5, g100:96.1, g200:95.7, uscs:'CH',    pp:'', fv:'', qu:'', gt:2.06, sptN:61},
-  {no:'SS-8', from:18,   to:18.45,wn:21.5, ll:55.4, pl:26.9, g4:99.2, g10:98.5, g40:97.3, g100:96.8, g200:96.2, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:69}
-];
+let SUM = [];
+
+/* =====================================================================
+   PERSISTENT PROJECT STATE
+   ===================================================================== */
+const APP_STATE_KEY='tenConsultantsSoilLabStateV11';
+let _saveTimer=null,_loadingState=false;
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(APP_STATE_KEY,JSON.stringify({version:12,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
+function loadAppState(){try{const raw=localStorage.getItem(APP_STATE_KEY);if(!raw)return false;const st=JSON.parse(raw);if(!st||![11,12].includes(st.version))return false;_loadingState=true;if(st.project)Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});if(Array.isArray(st.UW)&&st.UW.length)UW=st.UW;if(Array.isArray(st.SV)&&st.SV.length)SV=st.SV;if(Array.isArray(st.ATT)&&st.ATT.length)ATT=st.ATT;if(Array.isArray(st.UCT)&&st.UCT.length)UCT=st.UCT;if(Array.isArray(st.SUM))SUM=st.SUM;if(Number.isFinite(Number(st.uctIdx)))uctIdx=Math.min(Math.max(Number(st.uctIdx),0),Math.max(0,UCT.length-1));_loadingState=false;return true;}catch(e){_loadingState=false;return false;}}
+window.addEventListener('beforeunload',saveAppState);
+document.addEventListener('input',e=>{if(e.target?.matches?.('input,textarea,select'))scheduleSaveState();});
+document.addEventListener('change',e=>{if(e.target?.matches?.('input,textarea,select'))scheduleSaveState();});
 
 /* =====================================================================
    CALCULATION ENGINE
@@ -577,7 +579,14 @@ function syncSieveFromUW(silent){
   SV.forEach(s=>{
     let src = UW.find(u=>u.cont && s.dish && String(u.cont).trim()===String(s.dish).trim());
     if(!src) src = UW.find(u=>String(u.no).replace(/\D/g,'')===String(s.no).replace(/\D/g,''));
-    if(src){ s.a=src.a; s.b=src.b; s.c=src.c; hit++; }
+    if(src){
+      // Only fill missing values. Sieve OCR can read its own dish/dry-sample masses
+      // from the Sieve form; never overwrite those with unrelated Unit Weight values.
+      if(s.a===null||s.a===undefined||s.a==='') s.a=src.a;
+      if(s.b===null||s.b===undefined||s.b==='') s.b=src.b;
+      if(s.c===null||s.c===undefined||s.c==='') s.c=src.c;
+      hit++;
+    }
   });
   renderSieve(); buildChart();
   if(!silent) toast(`ลิงก์ค่าสำเร็จ ${hit}/${SV.length} ตัวอย่าง`,'success');
@@ -660,29 +669,28 @@ function renderSumStats(){
 }
 
 function syncSummaryFromModules(){
-  let hit=0;
+  const manual=new Map();
+  SUM.forEach(s=>{ const k=summarySampleKey(s.no); if(k) manual.set(k,{...s}); });
+  const sourceMap=new Map();
+  const add=(arr)=>{ (arr||[]).forEach(s=>{ const k=summarySampleKey(s?.no); if(k&&!sourceMap.has(k)) sourceMap.set(k,String(s.no).trim()); }); };
+  add(UW); add(SV); add(ATT); add(UCT);
+  manual.forEach((s,k)=>{ if(!sourceMap.has(k) && Object.values(s).some(v=>v!==''&&v!==null&&v!==undefined && v!==s.no)) sourceMap.set(k,s.no); });
+  const keys=[...sourceMap.keys()].sort((a,b)=>{const an=a.startsWith('N')?Number(a.slice(1)):9999,bn=b.startsWith('N')?Number(b.slice(1)):9999;return an-bn||a.localeCompare(b);});
+  SUM=keys.map(k=>{ const m=manual.get(k)||{}; return {no:sourceMap.get(k),from:m.from??'',to:m.to??'',wn:m.wn??'',ll:m.ll??'',pl:m.pl??'',g4:m.g4??'',g10:m.g10??'',g40:m.g40??'',g100:m.g100??'',g200:m.g200??'',uscs:m.uscs??'',pp:m.pp??'',fv:m.fv??'',qu:m.qu??'',gt:m.gt??'',sptN:m.sptN??''}; });
   SUM.forEach(s=>{
-    const key = String(s.no).trim();
-    if(!key) return;
-    const u = UW.find(x=>String(x.no).trim()===key);
-    if(u){ const c=calcUW(u); if(c.w!==null) s.wn = c.w; }
-    const at = ATT.find(x=>String(x.no).trim()===key);
-    if(at){ const c=calcAtterberg(at); if(c.LL!==null) s.ll=c.LL; if(c.PL!==null) s.pl=c.PL; }
-    const sv = SV.find(x=>String(x.no).trim()===key);
-    if(sv){
-      const {rows} = calcSieve(sv);
-      const pick = name => { const r = rows.find(r=>r.sieve===name); return r && r.i!==null ? r.i : undefined; };
-      const g4=pick('#4'), g10=pick('#10'), g40=pick('#40'), g100=pick('#100'), g200=pick('#200');
-      if(g4!==undefined) s.g4=g4; if(g10!==undefined) s.g10=g10; if(g40!==undefined) s.g40=g40;
-      if(g100!==undefined) s.g100=g100; if(g200!==undefined) s.g200=g200;
-    }
-    const t = UCT.find(x=>String(x.no).trim()===key);
-    if(t){ const c=calcUCTSummary(t); if(c.qu!==null) s.qu=c.qu; if(c.gt!==null) s.gt=c.gt; }
-    if(u||at||sv||t) hit++;
+    const k=summarySampleKey(s.no);
+    const u=UW.find(x=>summarySampleKey(x.no)===k);
+    if(u){const c=calcUW(u); if(c.w!==null)s.wn=c.w;}
+    const at=ATT.find(x=>summarySampleKey(x.no)===k && (x.a!==''||x.b!==''||x.c!==''||x.blows!==''));
+    if(at){const c=calcAtterberg(at); if(c.LL!==null)s.ll=c.LL; if(c.PL!==null)s.pl=c.PL;}
+    const sv=SV.find(x=>summarySampleKey(x.no)===k);
+    if(sv){const rows=calcSieve(sv).rows; const map={g4:'#4',g10:'#10',g40:'#40',g100:'#100',g200:'#200'}; Object.entries(map).forEach(([key,name])=>{const r=rows.find(x=>x.sieve===name); if(r?.i!==null&&r?.i!==undefined)s[key]=r.i;});}
+    const t=UCT.find(x=>summarySampleKey(x.no)===k);
+    if(t){const c=calcUCTSummary(t); if(c.qu!==null)s.qu=c.qu; if(c.gt!==null)s.gt=c.gt;}
   });
-  renderSUM();
-  toast(`ดึงค่าสำเร็จ ${hit}/${SUM.length} ตัวอย่าง`,'success');
+  renderSUM(); scheduleSaveState();
 }
+
 
 /* =====================================================================
    RENDER : UNIT WEIGHT TABLE
@@ -750,6 +758,7 @@ function renderUW(){
     inp.addEventListener('change', ()=>{ syncSieveFromUW(true); });
   });
   renderSummary();
+  scheduleSaveState();
 }
 
 function refreshCalcOnly(){
@@ -762,6 +771,7 @@ function refreshCalcOnly(){
     list.forEach(({s},ci)=>{ cells[3+ci].textContent = show(calcUW(s)[row.key]); });
   });
   renderSummary();
+  scheduleSaveState();
 }
 
 function renderSummary(){
@@ -816,9 +826,9 @@ function renderSieve(){
           <label class="flex items-center gap-1">Depth: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="depth" value="${show(s.depth)}"></label>
         </div>
         <div class="grid grid-cols-5 gap-1 pt-1 text-center">
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Container)</span><b class="text-xs">${show(s.a)}</b></div>
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">b (Wet+Cont)</span><b class="text-xs">${show(s.b)}</b></div>
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">c (Dry+Cont)</span><b class="text-xs">${show(s.c)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Dish Wt.)</span><b class="text-xs">${show(s.a)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">b (Wet+Dish)</span><b class="text-xs">${show(s.b)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">c (Dry+Dish)</span><b class="text-xs">${show(s.c)}</b></div>
           <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">d (Dry Sample)</span><b class="text-xs">${show(d)}</b></div>
           <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">e (Mass Dish)</span><b class="text-xs">${show(e)}</b></div>
         </div>
@@ -1326,15 +1336,16 @@ function renderPrev(prevId, bucket){
 /* =====================================================================
    AI OCR (Gemini Vision) — อ่านค่าตัวเลขจากรูปภาพ/สแกนผลทดสอบ
    ===================================================================== */
-async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = null, category = 'OCR'){
+async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = null, category = 'OCR', modelChain = null){
   if(!CFG.GEM_KEY) throw new Error('NO_KEY');
 
   // Auto mode uses a cheap stable fallback before the more expensive Pro model.
   // A 429 is not necessarily an RPM problem: Gemini can also return 429 for
   // other quota/rate-limit dimensions, so do not stop immediately on 429.
-  const models = CFG.GEM_MODE==='pro' ? [CFG.GEM_FALLBACK] :
-                 CFG.GEM_MODE==='flash' ? [CFG.GEM_PRIMARY] :
-                 [CFG.GEM_PRIMARY, CFG.GEM_STABLE_FALLBACK, CFG.GEM_FALLBACK];
+  const models = Array.isArray(modelChain) && modelChain.length ? modelChain :
+                 (CFG.GEM_MODE==='pro' ? [CFG.GEM_FALLBACK] :
+                  CFG.GEM_MODE==='flash' ? [CFG.GEM_PRIMARY] :
+                  [CFG.GEM_PRIMARY, CFG.GEM_STABLE_FALLBACK, CFG.GEM_FALLBACK]);
 
   const parts = [{text: promptText}];
   imgs.forEach(im=>{
@@ -1344,6 +1355,7 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
   });
 
   let lastErr = null;
+  const modelErrors = [];
   for(let mi=0; mi<models.length; mi++){
     const model = models[mi];
     const generationConfig = {
@@ -1376,22 +1388,102 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
           lastErr = new Error(`AI ไม่ส่งข้อมูลกลับ (${GEM_PRICING[model]?.name||model})`);
           break;
         }
-        let clean=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-        try{
-          const parsed=JSON.parse(clean);
-          parsed.__gemUsage = usage;
-          parsed.__gemModel = model;
+        // Gemini normally returns pure JSON when responseMimeType is set, but
+        // some models/SDK paths can still add markdown fences, leading/trailing
+        // prose, or a BOM. Clean those harmless wrappers before parsing.
+        const parseJsonLoose = (rawText) => {
+          let clean = String(rawText || '').replace(/^\uFEFF/, '').trim();
+          clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+          try { return {value:JSON.parse(clean), salvaged:false}; } catch(e) {}
+
+          // First try to recover a complete outer JSON array/object when the model
+          // added harmless text around an otherwise valid response.
+          const starts = [];
+          const ai = clean.indexOf('['); if(ai>=0) starts.push({i:ai,ch:'['});
+          const oi = clean.indexOf('{'); if(oi>=0) starts.push({i:oi,ch:'{'});
+          starts.sort((a,b)=>a.i-b.i);
+          for(const st of starts){
+            const open=st.ch, close=open==='['?']':'}';
+            let depth=0, inStr=false, esc=false;
+            for(let i=st.i;i<clean.length;i++){
+              const c=clean[i];
+              if(inStr){
+                if(esc) esc=false;
+                else if(c==='\\') esc=true;
+                else if(c==='"') inStr=false;
+                continue;
+              }
+              if(c==='"'){inStr=true;continue;}
+              if(c===open) depth++;
+              else if(c===close){
+                depth--;
+                if(depth===0){
+                  const candidate=clean.slice(st.i,i+1);
+                  try{ return {value:JSON.parse(candidate),salvaged:false}; }catch(e){ break; }
+                }
+              }
+            }
+          }
+
+          // If Gemini truncated an ARRAY response, salvage every complete object
+          // that finished before the truncation. Sieve OCR is deliberately split
+          // into small crops, so retaining completed cards is preferable to
+          // discarding the whole request.
+          if(schema?.type==='ARRAY'){
+            const start=clean.indexOf('[');
+            if(start>=0){
+              const items=[];
+              let objStart=-1, depth=0, inStr=false, esc=false;
+              for(let i=start+1;i<clean.length;i++){
+                const c=clean[i];
+                if(inStr){
+                  if(esc) esc=false;
+                  else if(c==='\\') esc=true;
+                  else if(c==='"') inStr=false;
+                  continue;
+                }
+                if(c==='"'){inStr=true;continue;}
+                if(c==='{'){
+                  if(depth===0) objStart=i;
+                  depth++;
+                }else if(c==='}'){
+                  if(depth>0) depth--;
+                  if(depth===0 && objStart>=0){
+                    const piece=clean.slice(objStart,i+1);
+                    try{
+                      const obj=JSON.parse(piece);
+                      if(obj && typeof obj==='object' && !Array.isArray(obj)) items.push(obj);
+                    }catch(e){}
+                    objStart=-1;
+                  }
+                }
+              }
+              if(items.length) return {value:items,salvaged:true};
+            }
+          }
+          return null;
+        };
+        const parsedInfo=parseJsonLoose(text);
+        if(parsedInfo!==null){
+          const parsed=parsedInfo.value;
+          if(parsed && typeof parsed==='object'){
+            parsed.__gemUsage = usage;
+            parsed.__gemModel = model;
+            parsed.__gemSalvaged = !!parsedInfo.salvaged;
+          }
           return parsed;
-        }catch(parseErr){
-          lastErr = new Error(`AI ส่ง JSON ไม่ถูกต้อง (${GEM_PRICING[model]?.name||model})`);
-          break;
         }
+        const preview=text.replace(/\s+/g,' ').slice(0,260);
+        lastErr = new Error(`AI ส่ง JSON ไม่ถูกต้อง (${GEM_PRICING[model]?.name||model})${preview ? `: ${preview}` : ''}`);
+        break;
       }
 
       const status=res.status;
       const raw=await res.text();
       let apiMsg='';
       let retryDelayMs=null;
+      const quotaLimitZero = /(?:limit|quota_limit_value)\s*[:=]\s*0\b/i.test(raw);
       try{
         const ej=JSON.parse(raw);
         apiMsg = ej?.error?.message || '';
@@ -1401,6 +1493,14 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
           if(m) retryDelayMs=Math.ceil(Number(m[1])*1000);
         }
       }catch(e){}
+
+      // A quota with limit=0 is not a temporary rate-limit condition.
+      // Retrying the same request only wastes time, so skip immediately.
+      if(status===429 && quotaLimitZero){
+        lastErr=new Error(`Gemini API Error (429): โควตาของ ${GEM_PRICING[model]?.name||model} เป็น 0 สำหรับ metric ที่ร้องขอ${apiMsg ? `: ${apiMsg}` : ''}`);
+        modelErrors.push(`${GEM_PRICING[model]?.name||model}: quota limit 0`);
+        break;
+      }
 
       if((status===429 || status===503 || status>=500) && attempt<MAX_RETRIES){
         const fallbackWait = Math.min(20000, 2000*Math.pow(2,attempt));
@@ -1420,10 +1520,16 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
       break;
     }
 
-    // In Auto mode, move to the next model on transient quota/server errors too.
-    // Previously 429 stopped here, so the Sieve OCR never reached its fallback.
-    if(CFG.GEM_MODE==='auto' && mi<models.length-1 && lastErr && /\b(429|503|5\d\d)\b/.test(lastErr.message)) continue;
+    // In Auto mode, move to the next model not only for quota/server errors,
+    // but also when a model returns malformed/truncated JSON. This is important
+    // for Sieve OCR because a long structured response can occasionally be cut
+    // off even though the HTTP request itself succeeded.
+    if(lastErr) modelErrors.push(`${GEM_PRICING[model]?.name||model}: ${lastErr.message}`);
+    if(CFG.GEM_MODE==='auto' && mi<models.length-1 && lastErr) continue;
     break;
+  }
+  if(modelErrors.length>1){
+    throw new Error(`Gemini OCR ใช้งานไม่ได้จากทุกโมเดลที่ตั้งไว้\n\n${modelErrors.map(x=>`• ${x}`).join('\n')}`);
   }
   throw lastErr || new Error('Gemini API request failed');
 }
@@ -1448,7 +1554,7 @@ const SV_SCHEMA = {
   type:"ARRAY", items:{ type:"OBJECT", properties:{
     no:{type:"STRING", description:"Sample No. exactly as printed. Return every visible sample; no 32-sample limit."},
     dish:{type:"STRING", description:"Dish No. exactly as printed, e.g. B-17, V-46, S-40, S-42, V-29, B-15"},
-    f:{ type:"OBJECT", description:"Retained weight (gm) keyed by the printed sieve label. Use null when blank/unreadable.", properties:{
+    f:{ type:"OBJECT", description:"Retained weight (gm) keyed by sieve label. Include ONLY visible handwritten numeric values; omit blank/unreadable sieve keys.", properties:{
       "3/4\"":{type:"NUMBER", nullable:true},
       "3/8\"":{type:"NUMBER", nullable:true},
       "#4":{type:"NUMBER", nullable:true},
@@ -1459,6 +1565,19 @@ const SV_SCHEMA = {
       "PAN":{type:"NUMBER", nullable:true}
     }}
   }, required:["no","dish","f"]}
+};
+const SV_CARD_SCHEMA = {
+  type:"ARRAY", items:{ type:"OBJECT", properties:{
+    no:{type:"STRING", description:"Sample No. exactly as printed on this ONE card."},
+    dish:{type:"STRING", description:"Dish No. exactly as printed on this ONE card."},
+    a:{type:"NUMBER", nullable:true, description:"WT. OF DISH (gm.) from this Sieve card only."},
+    c:{type:"NUMBER", nullable:true, description:"DRY SAMPLE + DISH (gm.) from this Sieve card only."},
+    values:{
+      type:"ARRAY",
+      description:"EXACTLY 8 entries in printed row order: 3/4, 3/8, #4, #10, #40, #100, #200, PAN. Use null for a blank/unreadable row.",
+      items:{type:"NUMBER", nullable:true}
+    }
+  }, required:["no","dish","values"]}
 };
 const ATT_SCHEMA = {
   type:"ARRAY", items:{ type:"OBJECT", properties:{
@@ -1528,71 +1647,275 @@ Read handwriting exactly. Do not calculate. Blank/unreadable = null. Do not inve
     toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+    const msg = String(err.message||'');
+    if(/quota limit 0|โควตาของ .* เป็น 0/i.test(msg)){
+      Swal.fire({icon:'warning', title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลนี้', html:`<div style=\"text-align:left;font-size:14px;line-height:1.55\">${msg.replace(/\n/g,'<br>')}<br><br><b>แนะนำ:</b> ตรวจสอบ API key / Project / Billing ใน Google AI Studio แล้วเลือกโมเดลที่มี quota มากกว่า 0</div>`});
+    }else{
+      Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:msg});
+    }
   }
+}
+
+async function cropImageData(dataUrl, y, cropH, maxSide=1600){
+  return await new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const sx=0, sy=Math.max(0,Math.floor(y)), sw=img.naturalWidth;
+        const sh=Math.min(Math.floor(cropH), img.naturalHeight-sy);
+        if(sw<=0 || sh<=0) return reject(new Error('ไม่สามารถตัดภาพ Sieve Analysis ได้'));
+
+        // Scale the crop back up so handwriting remains readable after splitting the page.
+        // When the crop is narrower/shorter than maxSide, enlarge it up to maxSide
+        // without exceeding browser canvas limits.
+        const upscale=Math.min(3, maxSide/Math.max(sw,sh));
+        const ow=Math.max(1,Math.round(sw*upscale));
+        const oh=Math.max(1,Math.round(sh*upscale));
+        const canvas=document.createElement('canvas');
+        canvas.width=ow; canvas.height=oh;
+        const ctx=canvas.getContext('2d',{alpha:false});
+        ctx.imageSmoothingEnabled=true;
+        ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,sx,sy,sw,sh,0,0,ow,oh);
+        resolve(canvas.toDataURL('image/jpeg',0.86));
+      }catch(e){ reject(e); }
+    };
+    img.onerror=()=>reject(new Error('ไม่สามารถเปิดภาพ Sieve Analysis ได้'));
+    img.src=dataUrl;
+  });
+}
+
+async function cropImageRectData(dataUrl, x, y, cropW, cropH, maxSide=1400){
+  return await new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const sx=Math.max(0,Math.floor(x));
+        const sy=Math.max(0,Math.floor(y));
+        const sw=Math.min(Math.floor(cropW), img.naturalWidth-sx);
+        const sh=Math.min(Math.floor(cropH), img.naturalHeight-sy);
+        if(sw<=0 || sh<=0) return reject(new Error('ไม่สามารถตัด Sample Card ของ Sieve Analysis ได้'));
+        const upscale=Math.min(3.5, maxSide/Math.max(sw,sh));
+        const ow=Math.max(1,Math.round(sw*upscale));
+        const oh=Math.max(1,Math.round(sh*upscale));
+        const canvas=document.createElement('canvas');
+        canvas.width=ow; canvas.height=oh;
+        const ctx=canvas.getContext('2d',{alpha:false});
+        ctx.imageSmoothingEnabled=true;
+        ctx.imageSmoothingQuality='high';
+        ctx.drawImage(img,sx,sy,sw,sh,0,0,ow,oh);
+        resolve(canvas.toDataURL('image/jpeg',0.92));
+      }catch(e){ reject(e); }
+    };
+    img.onerror=()=>reject(new Error('ไม่สามารถเปิดภาพ Sample Card ของ Sieve Analysis ได้'));
+    img.src=dataUrl;
+  });
 }
 
 async function runOcrSV(){
   if(!IMG.sv.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS • OCR v12', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Read this SIEVE ANALYSIS form as separate sample cards.
-Return ONE object for EVERY visible sample card. Do not merge samples and do not shift values between columns.
-For EACH sample, read:
-1) Sample No. from the printed Sample No. field.
-2) Dish No. from the printed Dish No. field.
-3) Retained (gm) values ONLY from the Retained (gm) column, matched to the printed sieve row.
-The sieve rows are exactly: 3/4\", 3/8\", #4, #10, #40, #100, #200, PAN.
-The handwriting in the Retained column belongs to the same sample card and same sieve row.
-Blank row = null. Do not move a value to another sieve. Do not calculate cum. wt. retained, % retained, or % finer.
-Important examples from this form: sample SS-1 / dish B-17 has values at #4, #10, #40, #100, #200; sample 2 / dish V-46 has values at #10, #40, #100, #200.
-Preserve the handwritten number exactly; decimals are important.
-Before returning, count the visible sample cards and return exactly one object per visible card. If a value is unclear, return null rather than guessing.`;
+    // OCR v12: one Sample Card per Gemini request, using geometry calibrated to the supplied 3-column x 2-row scan.
+    // The crop includes the complete sieve table down through #200/PAN so bottom rows are not lost.
+    // Do not discard values that appear out of order; preserve all raw OCR readings and let % Finer validation flag anomalies.
+    // A dedicated single-card crop plus a positional 8-value array removes that ambiguity.
+    const cardPrompt = `Read ONLY the single SIEVE ANALYSIS SAMPLE CARD in this image.
+There is exactly ONE sample card in the image. Do not read any other card, project header, or nearby text.
+Return ONE JSON array with ONE object only.
 
-    const arr = await callGemini(IMG.sv, prompt, 3200, SV_SCHEMA, 'Sieve Analysis');
-    if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+Fields:
+- no = Sample No. exactly as printed.
+- dish = Dish No. exactly as printed.
+- a = WT. OF DISH (gm.) from this card.
+- c = DRY SAMPLE + DISH (gm.) from this card.
+- values = EXACTLY 8 numbers/nulls in this fixed printed row order:
+  [3/4, 3/8, #4, #10, #40, #100, #200, PAN]
 
-    const sieveKeys = SIEVES.map(x=>x.name);
-    const norm = v => String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
-    const sampleKey = v => norm(v).replace(/\s+/g,'');
-    const dishKey = v => norm(v).replace(/\s+/g,'');
+CRITICAL ROW-MAPPING RULES:
+1. Read the handwritten number from the Retained (gm) column of EACH printed sieve row.
+2. Keep the value at the SAME ROW. Never shift a value up or down.
+3. #200 is the SECOND-LAST row; PAN is the LAST row. A handwritten #200 value MUST go into values[6], never values[7].
+4. 3/4 and 3/8 may be blank. Blank/unreadable = null.
+5. Read ALL handwritten rows from #4 through PAN. Do not stop after the first, second, or third handwritten number.
+6. Decimals are important. Preserve them exactly as written (examples: 16.38, 17.49, 30.93, 32.44).
+7. Do NOT calculate cumulative retained, % retained, or % finer.
+8. Return only JSON. No markdown, no explanation.`;
 
-    // Match by Sample No. first, then Dish No. This prevents a dish from being
-    // attached to the wrong sample when several cards are visible.
-    arr.forEach(item=>{
-      const rawF = (item && item.f && typeof item.f==='object' && !Array.isArray(item.f)) ? item.f : {};
-      const fObj = {};
-      sieveKeys.forEach(k=>{
-        const v = rawF[k];
-        if(v!==null && v!==undefined && v!=='') fObj[k]=v;
+    const allArr=[];
+    const usageList=[];
+    let cardCount=0;
+
+    for(let page=0; page<IMG.sv.length; page++){
+      const src=IMG.sv[page]?.data;
+      if(!src) continue;
+      const probe=await new Promise((resolve,reject)=>{
+        const im=new Image();
+        im.onload=()=>resolve({w:im.naturalWidth,h:im.naturalHeight});
+        im.onerror=()=>reject(new Error(`ไม่สามารถอ่านขนาดภาพ หน้า ${page+1}`));
+        im.src=src;
       });
 
-      let idx = -1;
-      if(item?.no) idx = SV.findIndex(s=>sampleKey(s.no)===sampleKey(item.no));
-      if(idx<0 && item?.dish) idx = SV.findIndex(s=>dishKey(s.dish)===dishKey(item.dish));
-      if(idx<0) {
-        // If the current list contains the same number of blank/new records, use one.
-        idx = SV.findIndex(s=>!s.no && !s.dish);
-      }
+      // This form is a stable 3-column × 2-row layout. The normalized boxes below
+      // intentionally crop tightly around each card so the handwritten Retained column
+      // gets much more pixels than when the entire row is sent.
+      // The source scan is a 3-column × 2-row layout. Use wider boxes so the
+      // entire right-hand card is included; v9's narrow boxes could cut off a card.
+      const cols=[
+        {name:'ซ้าย', x:0.055, w:0.278},
+        {name:'กลาง',x:0.318, w:0.278},
+        {name:'ขวา', x:0.585, w:0.278}
+      ];
+      const rows=[
+        {name:'บน', y:0.090, h:0.470},
+        {name:'ล่าง',y:0.545, h:0.425}
+      ];
 
+      for(const row of rows){
+        for(const col of cols){
+          cardCount++;
+          if(Swal.isVisible?.()) Swal.update({text:`SIEVE ANALYSIS • OCR v12 • อ่าน Sample Card ${cardCount} (${page+1}/${IMG.sv.length} หน้า, แถว${row.name}, ${col.name})`});
+          const crop=await cropImageRectData(
+            src,
+            probe.w*col.x,
+            probe.h*row.y,
+            probe.w*col.w,
+            probe.h*row.h,
+            1400
+          );
+
+          // Small spacing prevents a burst of requests while keeping the whole OCR run fast.
+          if(cardCount>1) await new Promise(r=>setTimeout(r,4200));
+
+          const arr=await callGemini(
+            [{data:crop}],
+            cardPrompt,
+            900,
+            SV_CARD_SCHEMA,
+            'Sieve Analysis',
+            [CFG.GEM_PRIMARY, CFG.GEM_STABLE_FALLBACK]
+          );
+          let usableArr=Array.isArray(arr)?arr:[];
+          const cardOk = usableArr.some(it=>it && it.no && it.dish && Array.isArray(it.values));
+          // Retry once when the model missed the card header or returned no usable
+          // positional values. This is especially important for the right-hand cards.
+          if(!cardOk){
+            const retryX=Math.max(0, probe.w*(col.x-0.018));
+            const retryY=Math.max(0, probe.h*(row.y-0.025));
+            const retryW=Math.min(probe.w, probe.w*(col.w+0.040));
+            const retryH=Math.min(probe.h, probe.h*(row.h+0.050));
+            const retryCrop=await cropImageRectData(src,retryX,retryY,retryW,retryH,1550);
+            const retry=await callGemini([{data:retryCrop}],cardPrompt+'\nRetry note: identify this exact card even if some handwritten values are faint; preserve all 8 row positions. Never return an object for a different card.',900,SV_CARD_SCHEMA,'Sieve Analysis',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK]);
+            usableArr=Array.isArray(retry)?retry:[];
+          }
+          if(!usableArr.length) continue;
+
+          usableArr.forEach(item=>{
+            if(!item || typeof item!=='object') return;
+            const vals=Array.isArray(item.values)?item.values:[];
+            const f={};
+            SIEVES.forEach((sv,i)=>{
+              const v=vals[i];
+              if(v!==null && v!==undefined && v!=='') f[sv.name]=v;
+            });
+            if(item.no || item.dish) allArr.push({no:item.no||'',dish:item.dish||'',a:item.a??null,c:item.c??null,f});
+          });
+
+          if(arr.__gemUsage) usageList.push({...arr.__gemUsage,page:page+1,row:row.name,col:col.name});
+        }
+      }
+    }
+
+    if(!allArr.length) throw new Error('ไม่พบ Sample No. หรือ Dish No. ในรูป Sieve Analysis');
+
+    const sieveKeys=SIEVES.map(x=>x.name);
+    const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
+    const sampleKey=v=>norm(v).replace(/\s+/g,'');
+    const dishKey=v=>norm(v).replace(/\s+/g,'');
+    // Treat numeric labels and SS-prefixed labels as the same sample where applicable:
+    // e.g. 1 <-> SS-1, 2 <-> SS-2. This avoids duplicate sample cards.
+    const sampleMatchKey=v=>{
+      const n=sampleKey(v);
+      if(/^\d+$/.test(n)) return `N${Number(n)}`;
+      const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i);
+      return m?`N${Number(m[1])}`:`T${n}`;
+    };
+    const expectedSampleNumbers=Array.from({length:15},(_,i)=>String(i+1));
+    const mergedByKey=new Map();
+
+    allArr.forEach(item=>{
+      if(!item || typeof item!=='object') return;
+      const rawF=(item.f&&typeof item.f==='object'&&!Array.isArray(item.f))?item.f:{};
+      const key=item.no ? `no:${sampleMatchKey(item.no)}` : (item.dish ? `dish:${dishKey(item.dish)}` : '');
+      if(!key) return;
+      const prev=mergedByKey.get(key) || {no:item.no||'',dish:item.dish||'',f:{}};
+      if(item.no) prev.no=item.no;
+      if(item.dish) prev.dish=item.dish;
+      sieveKeys.forEach(k=>{
+        const v=rawF[k];
+        if(v!==null && v!==undefined && v!=='') prev.f[k]=v;
+      });
+      mergedByKey.set(key,prev);
+    });
+
+    mergedByKey.forEach(item=>{
+      let idx=-1;
+      if(item.no) idx=SV.findIndex(s=>s.no && sampleMatchKey(s.no)===sampleMatchKey(item.no));
+      if(idx<0 && item.dish) idx=SV.findIndex(s=>dishKey(s.dish)===dishKey(item.dish));
+      if(idx<0) idx=SV.findIndex(s=>!s.no && !s.dish);
       if(idx>=0){
-        SV[idx].no = item.no ?? SV[idx].no;
-        SV[idx].dish = item.dish ?? SV[idx].dish;
-        SV[idx].f = {...(SV[idx].f||{}), ...fObj};
+        SV[idx].no=item.no || SV[idx].no;
+        SV[idx].dish=item.dish || SV[idx].dish;
+        if(item.a!==null&&item.a!==undefined&&item.a!=='') SV[idx].a=item.a;
+        if(item.c!==null&&item.c!==undefined&&item.c!=='') SV[idx].c=item.c;
+        SV[idx].f={...(SV[idx].f||{}),...(item.f||{})};
       }else{
-        SV.push({no:item.no ?? String(SV.length+1), dish:item.dish ?? '', depth:'', a:null, b:null, c:null, f:fObj});
+        SV.push({no:item.no||String(SV.length+1),dish:item.dish||'',depth:'',a:item.a??null,b:null,c:item.c??null,f:item.f||{}});
       }
     });
 
-    // Link a/b/c from Unit Weight without replacing the OCR Retained values.
+    // Guarantee that all 15 printed sample slots exist in the UI, even when one
+    // individual OCR crop returns no result. Missing cards stay blank instead of
+    // disappearing; successful OCR cards are merged into the matching slot.
+    expectedSampleNumbers.forEach(n=>{
+      const exists=SV.some(s=>s.no && sampleMatchKey(s.no)===`N${Number(n)}`);
+      if(!exists) SV.push({no:n,dish:'',depth:'',a:null,b:null,c:null,f:{}});
+    });
+
+    // IMPORTANT: Never delete an OCR Retained (gm) value because it is smaller than
+    // the previous row. Retained (gm) is an input reading, not the calculated % Finer.
+    // Any sequence problem is handled later by the % Finer validation/red-text logic;
+    // raw OCR values must remain visible for manual checking and correction.
+
+    // Keep the printed sample order 1..15 for the Sieve section.
+    SV.sort((a,b)=>{
+      const ak=sampleMatchKey(a.no), bk=sampleMatchKey(b.no);
+      const an=ak.startsWith('N')?Number(ak.slice(1)):9999;
+      const bn=bk.startsWith('N')?Number(bk.slice(1)):9999;
+      return an-bn;
+    });
+
     syncSieveFromUW(true);
-    renderSieve(); buildChart();
+    renderSieve(); buildChart(); scheduleSaveState();
     Swal.close();
-    toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
+    const usage=usageList.length ? {
+      input:usageList.reduce((a,u)=>a+Number(u.input||0),0),
+      output:usageList.reduce((a,u)=>a+Number(u.output||0),0),
+      total:usageList.reduce((a,u)=>a+Number(u.total||0),0),
+      usd:usageList.reduce((a,u)=>a+Number(u.usd||0),0),
+      model:[...new Set(usageList.map(u=>u.model))].join(', '),
+      models:[...new Set(usageList.map(u=>u.model))]
+    } : null;
+    toast(gemUsageToast(usage, `อ่านค่าสำเร็จ ${mergedByKey.size} ตัวอย่าง จาก ${IMG.sv.length} หน้า (เป้าหมาย 15 ตัวอย่าง)`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+    const msg=String(err?.message||err);
+    if(/quota limit 0|โควตาของ .* เป็น 0/i.test(msg)){
+      Swal.fire({icon:'warning', title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลที่ใช้ OCR', text:msg});
+    }else{
+      Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:msg});
+    }
   }
 }
 
@@ -1624,7 +1947,7 @@ async function runOcrATT(){
       };
       if(idx>=0) ATT[idx] = merged; else ATT.push(merged);
     });
-    renderATT();
+    renderATT(); scheduleSaveState();
     Swal.close();
     toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
   }catch(err){
@@ -1661,7 +1984,7 @@ async function runOcrUCT(){
         if(i>=0 && rd.q!==null && rd.q!==undefined && rd.q!==''){ t.Q[i] = rd.q; filled++; }
       });
     }
-    renderUCT();
+    renderUCT(); scheduleSaveState();
     Swal.close();
     toast(gemUsageToast(obj.__gemUsage, `อ่านค่าสำเร็จ (${filled} แถว)`),'success');
   }catch(err){
@@ -2029,8 +2352,10 @@ function switchTab(name){
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 function gemUsageToast(u, label){
   if(!u) return '';
-  const model=GEM_PRICING[u.model]?.name || u.model || '';
-  return `${label} · ${model} · ${u.total.toLocaleString()} tokens · ~$${u.usd.toFixed(4)}`;
+  const model = Array.isArray(u.models) && u.models.length
+    ? u.models.map(m=>GEM_PRICING[m]?.name || m).join(' + ')
+    : (GEM_PRICING[u.model]?.name || u.model || '');
+  return `${label} · ${model} · ${Number(u.total||0).toLocaleString()} tokens · ~$${Number(u.usd||0).toFixed(4)}`;
 }
 function updateAiBadge(){
   const el=document.getElementById('aiModeBadge');
@@ -2185,6 +2510,8 @@ document.getElementById('ocrSV').addEventListener('click', runOcrSV);
 document.getElementById('ocrATT').addEventListener('click', runOcrATT);
 document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
 
+loadAppState();
+
 SIEVES.forEach(s=>{
   const o=document.createElement('option'); o.value=s.name; o.textContent=s.name;
   document.getElementById('filterSieve').appendChild(o);
@@ -2192,11 +2519,11 @@ SIEVES.forEach(s=>{
 
 switchTab('uw');
 renderUW();
-syncSieveFromUW(true);
+renderSieve();
 buildChart();
 renderATT();
 renderUCT();
-renderSUM();
+if(SUM.length) renderSUM(); else syncSummaryFromModules();
 </script>
 </body>
 </html>
