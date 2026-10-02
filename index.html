@@ -849,26 +849,47 @@ function renderSumStats(){
 }
 
 function syncSummaryFromModules(){
-  const manual=new Map();
-  SUM.forEach(s=>{ const k=summarySampleKey(s.no); if(k) manual.set(k,{...s}); });
-  const sourceMap=new Map();
-  const add=(arr)=>{ (arr||[]).forEach(s=>{ const k=summarySampleKey(s?.no); if(k&&!sourceMap.has(k)) sourceMap.set(k,String(s.no).trim()); }); };
-  add(UW); add(SV); add(ATT); add(UCT);
-  manual.forEach((s,k)=>{ if(!sourceMap.has(k) && Object.values(s).some(v=>v!==''&&v!==null&&v!==undefined && v!==s.no)) sourceMap.set(k,s.no); });
-  const keys=[...sourceMap.keys()].sort((a,b)=>{const an=a.startsWith('N')?Number(a.slice(1)):9999,bn=b.startsWith('N')?Number(b.slice(1)):9999;return an-bn||a.localeCompare(b);});
-  SUM=keys.map(k=>{ const m=manual.get(k)||{}; return {no:sourceMap.get(k),from:m.from??'',to:m.to??'',wn:m.wn??'',ll:m.ll??'',pl:m.pl??'',g4:m.g4??'',g10:m.g10??'',g40:m.g40??'',g100:m.g100??'',g200:m.g200??'',uscs:m.uscs??'',pp:m.pp??'',fv:m.fv??'',qu:m.qu??'',gt:m.gt??'',sptN:m.sptN??''}; });
+  // Summary uses its existing sample list as the source of truth.
+  // Updating from modules must never add/remove/reorder Summary samples.
+  SUM = (Array.isArray(SUM) ? SUM : []).map(s => ({...s}));
+
   SUM.forEach(s=>{
     const k=summarySampleKey(s.no);
-    const u=UW.find(x=>summarySampleKey(x.no)===k);
-    if(u){const c=calcUW(u); if(c.w!==null)s.wn=c.w;}
-    const at=ATT.find(x=>summarySampleKey(x.no)===k && (x.a!==''||x.b!==''||x.c!==''||x.blows!==''));
-    if(at){const c=calcAtterberg(at); if(c.LL!==null)s.ll=c.LL; if(c.PL!==null)s.pl=c.PL;}
-    const sv=SV.find(x=>summarySampleKey(x.no)===k);
-    if(sv){const rows=calcSieve(sv).rows; const map={g4:'#4',g10:'#10',g40:'#40',g100:'#100',g200:'#200'}; Object.entries(map).forEach(([key,name])=>{const r=rows.find(x=>x.sieve===name); if(r?.i!==null&&r?.i!==undefined)s[key]=r.i;});}
-    const t=UCT.find(x=>summarySampleKey(x.no)===k);
-    if(t){const c=calcUCTSummary(t); if(c.qu!==null)s.qu=c.qu; if(c.gt!==null)s.gt=c.gt;}
+    if(!k) return;
+
+    const u=UW.find(x=>summarySampleKey(x?.no)===k);
+    if(u){
+      const c=calcUW(u);
+      if(c.w!==null && c.w!==undefined) s.wn=c.w;
+    }
+
+    const at=ATT.find(x=>summarySampleKey(x?.no)===k);
+    if(at){
+      const c=calcAtterberg(at);
+      if(c.LL!==null && c.LL!==undefined) s.ll=c.LL;
+      if(c.PL!==null && c.PL!==undefined) s.pl=c.PL;
+    }
+
+    const sv=SV.find(x=>summarySampleKey(x?.no)===k);
+    if(sv){
+      const rows=calcSieve(sv).rows;
+      const map={g4:'#4',g10:'#10',g40:'#40',g100:'#100',g200:'#200'};
+      Object.entries(map).forEach(([key,name])=>{
+        const r=rows.find(x=>x.sieve===name);
+        if(r && r.i!==null && r.i!==undefined && r.i!=='') s[key]=r.i;
+      });
+    }
+
+    const t=UCT.find(x=>summarySampleKey(x?.no)===k);
+    if(t){
+      const c=calcUCTSummary(t);
+      if(c.qu!==null && c.qu!==undefined) s.qu=c.qu;
+      if(c.gt!==null && c.gt!==undefined) s.gt=c.gt;
+    }
   });
-  renderSUM(); scheduleSaveState();
+
+  renderSUM();
+  scheduleSaveState();
 }
 
 
