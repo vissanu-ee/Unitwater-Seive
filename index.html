@@ -737,7 +737,10 @@ function sieveFinerCellClass(rows, idx){
 }
 
 function syncSieveFromUW(silent){
-  let hit=0;
+  // Unit Weight is the source of truth for Sieve fields a/b/c.
+  // When the user edits Unit Weight and presses "ดึงค่าจากชีต Unit Weight",
+  // Sieve must receive the CURRENT values, not only fill previously blank cells.
+  let hit=0, changedCount=0;
   const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,'');
   const numKey=v=>{ const n=norm(v).replace(/[^0-9]/g,''); return n?String(Number(n)):''; };
   SV.forEach(s=>{
@@ -746,18 +749,27 @@ function syncSieveFromUW(silent){
     let src = UW.find(u=>dk && norm(u.cont)===dk);
     if(!src && sk) src = UW.find(u=>numKey(u.no)===sk);
     if(src){
-      // Fill only missing source fields. Never overwrite Sieve OCR values.
       let changed=false;
       ['a','b','c'].forEach(k=>{
-        if((s[k]===null||s[k]===undefined||s[k]==='') && src[k]!==null&&src[k]!==undefined&&src[k]!==''){
-          s[k]=src[k]; changed=true;
+        // Always synchronize to the latest Unit Weight value. This intentionally
+        // overwrites stale linked values in Sieve, including when UW was edited
+        // or cleared. Retained sieve weights (s.f) are never touched.
+        const next = (src[k]===null || src[k]===undefined) ? '' : src[k];
+        const prev = (s[k]===null || s[k]===undefined) ? '' : s[k];
+        if(String(prev)!==String(next)){
+          s[k]=next;
+          changed=true;
+          changedCount++;
         }
       });
       if(changed) hit++;
     }
   });
-  renderSieve(); buildChart();
-  if(!silent) toast(`ลิงก์ค่าสำเร็จ ${hit}/${SV.length} ตัวอย่าง`,'success');
+  renderSieve();
+  buildChart();
+  syncSummaryFromModules();
+  scheduleSaveState();
+  if(!silent) toast(`อัปเดตค่าจาก Unit Weight แล้ว ${hit} ตัวอย่าง (${changedCount} ช่อง)`,'success');
 }
 
 const r3 = v => (v===''||v===null||v===undefined||isNaN(v)) ? null : Math.round(v*1000)/1000;
@@ -2721,7 +2733,7 @@ function bootApp(){
   syncSieveFromUW(true);
   // Recalculate all derived Sieve fields immediately after restoring/linking source data.
   renderSieve(); buildChart();
-  // syncSieveFromUW() already links source fields and rebuilds the Grain Size chart.
+  // syncSieveFromUW() always refreshes linked a/b/c values from Unit Weight and rebuilds the Grain Size chart.
   renderATT();
   renderUCT();
   // Summary is rendered from the original source sample dataset; sync is manual via the Summary button.
