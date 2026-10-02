@@ -8,7 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.bare.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
 
 <script>
@@ -58,7 +58,8 @@ tailwind.config = {
       </div>
     </div>
     <div class="flex items-center gap-2.5 no-print">
-      <button id="btnSettings" class="px-4 py-2.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 transition font-medium border border-white/10">⚙ ตั้งค่า</button>
+      <span id="aiModeBadge" class="px-3 py-2 text-[11px] rounded-lg bg-white/10 border border-white/10 text-slate-200">AI: Auto</span>
+       <button id="btnSettings" class="px-4 py-2.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 transition font-medium border border-white/10">⚙ ตั้งค่า</button>
       <button id="btnExport"   class="px-5 py-2.5 text-sm font-bold rounded-lg bg-[#c9a227] hover:bg-[#b38f1f] text-[#12205c] transition shadow">⤓ Export Excel (Styled)</button>
     </div>
   </div>
@@ -380,8 +381,43 @@ tailwind.config = {
    CONFIG
    ===================================================================== */
 const CFG = {
-  GEM_KEY : localStorage.getItem('gemKey')  || ''
+  GEM_KEY : localStorage.getItem('gemKey')  || '',
+  GEM_MODE: localStorage.getItem('gemMode') || 'auto',
+  GEM_PRIMARY: 'gemini-3.1-flash-lite',
+  GEM_FALLBACK: 'gemini-3.1-pro-preview'
 };
+
+// Gemini API Standard Paid-Tier pricing (USD / 1M tokens).
+// Flash-Lite = low-cost/high-volume OCR; Pro = fallback for difficult OCR.
+const GEM_PRICING = {
+  'gemini-3.1-flash-lite': {name:'Gemini 3.1 Flash-Lite', input:0.25, output:1.50},
+  'gemini-3.1-pro-preview': {name:'Gemini 3.1 Pro', input:2.00, output:12.00}
+};
+const GEM_USAGE_KEY = 'gemUsageV6';
+let GEM_USAGE = (()=>{
+  try{return JSON.parse(localStorage.getItem(GEM_USAGE_KEY)||'[]')||[];}catch(e){return [];}
+})();
+function saveGemUsage(){
+  GEM_USAGE = GEM_USAGE.slice(-500);
+  localStorage.setItem(GEM_USAGE_KEY, JSON.stringify(GEM_USAGE));
+}
+function recordGemUsage(meta, category, model, imageCount){
+  const u = meta || {};
+  const input = Number(u.promptTokenCount||u.inputTokenCount||0);
+  const output = Number(u.candidatesTokenCount||u.outputTokenCount||0);
+  const total = Number(u.totalTokenCount||input+output);
+  const p = GEM_PRICING[model] || {input:0,output:0,name:model};
+  const usd = input/1e6*p.input + output/1e6*p.output;
+  GEM_USAGE.push({ts:new Date().toISOString(), category, model, imageCount, input, output, total, usd});
+  saveGemUsage();
+  return {input,output,total,usd,model};
+}
+function gemUsageSummary(){
+  return GEM_USAGE.reduce((a,u)=>{a.calls++;a.input+=u.input||0;a.output+=u.output||0;a.total+=u.total||0;a.usd+=u.usd||0;return a;},{calls:0,input:0,output:0,total:0,usd:0});
+}
+function gemModeLabel(){
+  return CFG.GEM_MODE==='pro' ? 'Pro' : CFG.GEM_MODE==='flash' ? 'Flash-Lite' : 'Auto';
+}
 
 const SIEVES = [
   {name:'3/4"', mm:19.0},{name:'3/8"', mm:9.5},{name:'#4', mm:4.75},
@@ -396,6 +432,10 @@ const show = v => (v===null||v===undefined) ? '' : v;
 /* =====================================================================
    DATA MODEL
    ===================================================================== */
+// Sample collections are intentionally dynamic. There is no 32-sample cap.
+// Excel supports far more than 32 columns/rows; the UI arrays can grow as needed.
+const SAMPLE_CAPACITY_NOTE = 'Dynamic sample capacity: >32 samples supported in every module.';
+
 let UW = [
   {no:'SS-1',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'M-63',a:19.30,b:109.76,c:84.14},
   {no:'2',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ก-57',a:17.33,b:128.57,c:110.14},
@@ -489,6 +529,29 @@ function calcSieve(s){
     return {sieve:sv.name, mm:sv.mm, f, g, h, i};
   });
   return {d,e,rows};
+}
+
+// Validate % Finer in the required sieve order: 3/4, 3/8, #4, #10, #40, #100, #200, PAN.
+// A blank cell is ignored. A visible value is invalid if it is <0, >100, equal to any
+// other visible % Finer value, or breaks the non-decreasing sequence.
+function sieveFinerStatus(rows, idx){
+  const v = rows[idx]?.i;
+  if(v===null || v===undefined || v==='') return {invalid:false, reasons:[]};
+  const reasons=[];
+  if(v<0) reasons.push('ติดลบ');
+  if(v>100) reasons.push('เกิน 100');
+  const values = rows.map((r,i)=>({i,v:r.i})).filter(x=>x.v!==null&&x.v!==undefined&&x.v!=='');
+  if(values.some(x=>x.i!==idx && Math.abs(Number(x.v)-Number(v)) < 1e-9)) reasons.push('ค่าซ้ำ');
+  let prev=null, next=null;
+  for(let i=idx-1;i>=0;i--){ if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){ prev=rows[i].i; break; } }
+  for(let i=idx+1;i<rows.length;i++){ if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){ next=rows[i].i; break; } }
+  if(prev!==null && Number(v)<Number(prev)) reasons.push('ลำดับไม่เพิ่มขึ้น');
+  if(next!==null && Number(v)>Number(next)) reasons.push('ลำดับไม่เพิ่มขึ้น');
+  return {invalid:reasons.length>0, reasons};
+}
+function sieveFinerCellClass(rows, idx){
+  const st=sieveFinerStatus(rows,idx);
+  return st.invalid ? ' text-red-600 font-bold' : '';
 }
 
 function syncSieveFromUW(silent){
@@ -709,14 +772,19 @@ function renderSieve(){
   box.innerHTML = SV.map((s,idx)=>{
     if(q && !(String(s.no).toLowerCase().includes(q)||String(s.dish).toLowerCase().includes(q))) return '';
     const {d,e,rows} = calcSieve(s);
-    const body = rows.filter(r=> !sf || r.sieve===sf).map(r=>`
-      <tr class="border-b border-slate-100">
+    const body = rows.filter(r=> !sf || r.sieve===sf).map((r)=>{
+      const ri = rows.indexOf(r);
+      const st = sieveFinerStatus(rows,ri);
+      const cls = sieveFinerCellClass(rows,ri);
+      const title = st.invalid ? `ตรวจสอบ % Finer: ${st.reasons.join(', ')}` : '';
+      return `<tr class="border-b border-slate-100">
         <td class="px-2 py-1.5 font-semibold text-slate-600">${r.sieve}</td>
         <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${r.sieve}" value="${show(s.f[r.sieve])}"></td>
         <td class="px-2 py-1.5 text-center text-slate-500">${show(r.g)}</td>
         <td class="px-2 py-1.5 text-center calc-cell">${show(r.h)}</td>
-        <td class="px-2 py-1.5 text-center calc-cell font-bold">${show(r.i)}</td>
-      </tr>`).join('');
+        <td class="px-2 py-1.5 text-center calc-cell font-bold${cls}" title="${title}">${show(r.i)}</td>
+      </tr>`;
+    }).join('');
 
     return `<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden fade-in">
       <div class="px-4 py-2.5 bg-[#1d2772] text-white flex items-center justify-between">
@@ -1240,79 +1308,81 @@ function renderPrev(prevId, bucket){
 /* =====================================================================
    AI OCR (Gemini Vision) — อ่านค่าตัวเลขจากรูปภาพ/สแกนผลทดสอบ
    ===================================================================== */
-async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = null){
+async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = null, category = 'OCR'){
   if(!CFG.GEM_KEY) throw new Error('NO_KEY');
-  const parts = [{text: promptText}];
 
+  const models = CFG.GEM_MODE==='pro' ? [CFG.GEM_FALLBACK] :
+                 CFG.GEM_MODE==='flash' ? [CFG.GEM_PRIMARY] :
+                 [CFG.GEM_PRIMARY, CFG.GEM_FALLBACK];
+
+  const parts = [{text: promptText}];
   imgs.forEach(im=>{
     const m = String(im.data).match(/^data:(.*?);base64,(.*)$/);
     if(!m) return;
     parts.push({inline_data:{mime_type:m[1], data:m[2]}});
   });
 
-  const generationConfig = {
-    responseMimeType:'application/json',
-    temperature:0,
-    maxOutputTokens,
-    // งาน OCR/สกัดค่าไม่ต้อง "คิดลึก" — thinking tokens ถูกคิดรวมเป็น output token
-    // ปิดไว้เพื่อลด token และเวลาตอบสนอง (ปลอดภัยสำหรับงานอ่านค่าตรงไปตรงมาแบบนี้)
-    thinkingConfig: { thinkingBudget: 0 }
-  };
-  if(schema) generationConfig.responseSchema = schema;
+  let lastErr = null;
+  for(let mi=0; mi<models.length; mi++){
+    const model = models[mi];
+    const generationConfig = {
+      responseMimeType:'application/json',
+      temperature:0,
+      maxOutputTokens,
+      // Gemini 3.1 uses thinkingLevel; do not send legacy thinkingBudget.
+      thinkingConfig:{thinkingLevel: model===CFG.GEM_PRIMARY ? 'minimal' : 'low'}
+    };
+    if(schema) generationConfig.responseSchema = schema;
 
-  const body = JSON.stringify({
-    contents:[{role:'user', parts}],
-    generationConfig
-  });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${CFG.GEM_KEY}`;
+    const body = JSON.stringify({contents:[{role:'user', parts}], generationConfig});
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${CFG.GEM_KEY}`;
+    const MAX_RETRIES = 2;
 
-  // Retry only transient/rate-limit errors. Longer exponential backoff avoids
-  // immediately repeating a request while the quota window is still full.
-  const MAX_RETRIES = 2;
-  let lastErr;
+    for(let attempt=0; attempt<=MAX_RETRIES; attempt++){
+      let res;
+      try{
+        res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+      }catch(netErr){
+        lastErr = new Error('เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+        if(attempt<MAX_RETRIES){await new Promise(r=>setTimeout(r,1500*Math.pow(2,attempt)));continue;}
+        break;
+      }
 
-  for(let attempt=0; attempt<=MAX_RETRIES; attempt++){
-    let res;
-    try{
-      res = await fetch(url, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body
-      });
-    }catch(netErr){
-      lastErr = new Error('เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
-      if(attempt<MAX_RETRIES){
-        await new Promise(r=>setTimeout(r, 1500 * Math.pow(2, attempt)));
+      if(res.ok){
+        const data = await res.json();
+        const usage = recordGemUsage(data.usageMetadata, category, model, imgs.length);
+        const text = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
+        if(!text){
+          lastErr = new Error(`AI ไม่ส่งข้อมูลกลับ (${GEM_PRICING[model]?.name||model})`);
+          break;
+        }
+        let clean=text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+        try{
+          const parsed=JSON.parse(clean);
+          parsed.__gemUsage = usage;
+          parsed.__gemModel = model;
+          return parsed;
+        }catch(parseErr){
+          lastErr = new Error(`AI ส่ง JSON ไม่ถูกต้อง (${GEM_PRICING[model]?.name||model})`);
+          break;
+        }
+      }
+
+      const status=res.status;
+      const t=await res.text();
+      if((status===429 || status===503 || status>=500) && attempt<MAX_RETRIES){
+        lastErr=new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
+        await new Promise(r=>setTimeout(r,Math.min(10000,2000*Math.pow(2,attempt))));
         continue;
       }
-      throw lastErr;
+      if(status===429){lastErr=new Error('Gemini API Error (429): โควตาหรืออัตราการเรียกใช้งานเต็มชั่วคราว กรุณารอสักครู่แล้วลองใหม่');}
+      else if(status===503){lastErr=new Error('เซิร์ฟเวอร์ Gemini กำลังมีผู้ใช้งานหนาแน่น (503) ลองใหม่อีกครั้งในอีกสักครู่');}
+      else {lastErr=new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);}
+      break;
     }
 
-    if(res.ok){
-      const data = await res.json();
-      const text = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
-      if(!text) throw new Error('ไม่ได้รับข้อมูลตอบกลับจาก AI');
-      let clean = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-      return JSON.parse(clean);
-    }
-
-    const status = res.status;
-    const t = await res.text();
-
-    if((status===429 || status===503 || status>=500) && attempt<MAX_RETRIES){
-      lastErr = new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
-      const waitMs = Math.min(10000, 2000 * Math.pow(2, attempt));
-      await new Promise(r=>setTimeout(r, waitMs));
-      continue;
-    }
-
-    if(status===429){
-      throw new Error('Gemini API Error (429): โควตาหรืออัตราการเรียกใช้งานเต็มชั่วคราว กรุณารอสักครู่แล้วลองใหม่');
-    }
-    if(status===503){
-      throw new Error('เซิร์ฟเวอร์ Gemini กำลังมีผู้ใช้งานหนาแน่น (503) ลองใหม่อีกครั้งในอีกสักครู่');
-    }
-    throw new Error(`Gemini API Error (${status}): ${t.slice(0,200)}`);
+    if(CFG.GEM_MODE==='auto' && mi===0 && lastErr && !/\b429\b/.test(lastErr.message)) continue;
+    break;
   }
   throw lastErr || new Error('Gemini API request failed');
 }
@@ -1321,18 +1391,33 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
 // และลดโอกาสตอบ JSON ผิดรูปแบบ (retry แต่ละครั้งคือส่งรูปซ้ำทั้งหมด แพงกว่าข้อความมาก)
 const UW_SCHEMA = {
   type:"ARRAY", items:{ type:"OBJECT", properties:{
-    no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
-    D:{type:"NUMBER", nullable:true}, H:{type:"NUMBER", nullable:true},
-    soilMold:{type:"NUMBER", nullable:true}, mold:{type:"NUMBER", nullable:true}, cont:{type:"STRING", nullable:true},
-    a:{type:"NUMBER", nullable:true}, b:{type:"NUMBER", nullable:true}, c:{type:"NUMBER", nullable:true}
-  }}
+    no:{type:"STRING", nullable:true, description:"Sample number exactly as handwritten. Return every visible sample; no 32-sample limit."},
+    depth:{type:"STRING", nullable:true, description:"DEPTH row only; do not copy values from other rows"},
+    D:{type:"NUMBER", nullable:true, description:"DIAMETER OF SOIL, D row only"},
+    H:{type:"NUMBER", nullable:true, description:"HEIGHT OF SOIL, H row only"},
+    soilMold:{type:"NUMBER", nullable:true, description:"WT. OF SOIL + MOLD row (row 6 in upper table / row 6 in lower table). Null if blank"},
+    mold:{type:"NUMBER", nullable:true, description:"WT. OF MOLD row. Null if blank"},
+    cont:{type:"STRING", nullable:true, description:"CONTAINER NO. row only, e.g. B-17, V-46, NR"},
+    a:{type:"NUMBER", nullable:true, description:"WT. OF CONTAINER row only"},
+    b:{type:"NUMBER", nullable:true, description:"WT. OF WET SOIL + CONTAINER row only. Do NOT put this value in soilMold"},
+    c:{type:"NUMBER", nullable:true, description:"WT. OF DRY SOIL + CONTAINER row only. Do NOT put this value in soilMold"}
+  }, required:["no","cont","a","b","c"]}
 };
 const SV_SCHEMA = {
   type:"ARRAY", items:{ type:"OBJECT", properties:{
-    no:{type:"STRING", nullable:true}, dish:{type:"STRING", nullable:true},
-    f:{ type:"ARRAY", description:"Retained (gm) per sieve size actually visible",
-        items:{ type:"OBJECT", properties:{ sieve:{type:"STRING"}, retained:{type:"NUMBER", nullable:true} } } }
-  }}
+    no:{type:"STRING", description:"Sample No. exactly as printed. Return every visible sample; no 32-sample limit."},
+    dish:{type:"STRING", description:"Dish No. exactly as printed, e.g. B-17, V-46, S-40, S-42, V-29, B-15"},
+    f:{ type:"OBJECT", description:"Retained weight (gm) keyed by the printed sieve label. Use null when blank/unreadable.", properties:{
+      "3/4\"":{type:"NUMBER", nullable:true},
+      "3/8\"":{type:"NUMBER", nullable:true},
+      "#4":{type:"NUMBER", nullable:true},
+      "#10":{type:"NUMBER", nullable:true},
+      "#40":{type:"NUMBER", nullable:true},
+      "#100":{type:"NUMBER", nullable:true},
+      "#200":{type:"NUMBER", nullable:true},
+      "PAN":{type:"NUMBER", nullable:true}
+    }}
+  }, required:["no","dish","f"]}
 };
 const ATT_SCHEMA = {
   type:"ARRAY", items:{ type:"OBJECT", properties:{
@@ -1362,9 +1447,20 @@ async function runOcrUW(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'UNIT WEIGHT & WATER CONTENT', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Extract raw values per sample from the UNIT WEIGHT & WATER CONTENT form image(s). Use exact visible values; null if missing/unreadable. Do not calculate anything.`;
+    const prompt = `Read the UNIT WEIGHT & WATER CONTENT form as a TABLE, not as a free-form list.
+There are TWO separate tables in the image. Return ONE object for EVERY visible sample column, including samples 1-8 in the upper table and 9-15 in the lower table.
+Map values ONLY by the printed row label and the same sample column:
+- no = SAMPLE NO.
+- cont = CONTAINER NO.
+- a = WT. OF CONTAINER
+- b = WT. OF WET SOIL + CONTAINER
+- c = WT. OF DRY SOIL + CONTAINER
+- soilMold = WT. OF SOIL + MOLD
+- mold = WT. OF MOLD
+Critical: the handwritten values in WT. OF WET SOIL + CONTAINER and WT. OF DRY SOIL + CONTAINER belong to b and c. NEVER place them in soilMold or mold.
+Read handwriting exactly. Do not calculate. Blank/unreadable = null. Do not invent values. Preserve sample numbers exactly as written.`;
 
-    const arr = await callGemini(IMG.uw, prompt, 1200, UW_SCHEMA);
+    const arr = await callGemini(IMG.uw, prompt, 1200, UW_SCHEMA, 'Unit Weight');
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankUW = u => !u.no && !u.cont && !u.depth && !u.D && !u.H && !u.soilMold && !u.mold &&
       (u.a===''||u.a===null||u.a===undefined) && (u.b===''||u.b===null||u.b===undefined) && (u.c===''||u.c===null||u.c===undefined);
@@ -1388,7 +1484,7 @@ async function runOcrUW(){
     });
     renderUW(); syncSieveFromUW(true);
     Swal.close();
-    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+    toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
@@ -1400,30 +1496,58 @@ async function runOcrSV(){
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
   Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Extract raw Retained (gm) values per sample from the SIEVE ANALYSIS image(s), only for sieve sizes actually visible. Do not calculate cumulative weight, % retained, or % finer.`;
+    const prompt = `Read this SIEVE ANALYSIS form as separate sample cards.
+Return ONE object for EVERY visible sample card. Do not merge samples and do not shift values between columns.
+For EACH sample, read:
+1) Sample No. from the printed Sample No. field.
+2) Dish No. from the printed Dish No. field.
+3) Retained (gm) values ONLY from the Retained (gm) column, matched to the printed sieve row.
+The sieve rows are exactly: 3/4\", 3/8\", #4, #10, #40, #100, #200, PAN.
+The handwriting in the Retained column belongs to the same sample card and same sieve row.
+Blank row = null. Do not move a value to another sieve. Do not calculate cum. wt. retained, % retained, or % finer.
+Important examples from this form: sample SS-1 / dish B-17 has values at #4, #10, #40, #100, #200; sample 2 / dish V-46 has values at #10, #40, #100, #200.
+Preserve the handwritten number exactly; decimals are important.`;
 
-    const arr = await callGemini(IMG.sv, prompt, 1200, SV_SCHEMA);
+    const arr = await callGemini(IMG.sv, prompt, 1400, SV_SCHEMA, 'Sieve Analysis');
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
-    const isBlankSV = s => !s.no && !s.dish && (!s.f || Object.keys(s.f).length===0);
-    const blankQueueSV = SV.map((s,i)=>isBlankSV(s)?i:-1).filter(i=>i>=0);
+
+    const sieveKeys = SIEVES.map(x=>x.name);
+    const norm = v => String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
+    const sampleKey = v => norm(v).replace(/\s+/g,'');
+    const dishKey = v => norm(v).replace(/\s+/g,'');
+
+    // Match by Sample No. first, then Dish No. This prevents a dish from being
+    // attached to the wrong sample when several cards are visible.
     arr.forEach(item=>{
-      const fObj = Object.fromEntries((Array.isArray(item.f)?item.f:[]).map(x=>[x.sieve, x.retained]).filter(([k,v])=>k!=null && v!=null));
-      let idx = SV.findIndex(s=>
-        (item.dish && s.dish && String(s.dish).trim()===String(item.dish).trim()) ||
-        (item.no && s.no && String(s.no).trim()===String(item.no).trim()));
-      if(idx<0 && blankQueueSV.length) idx = blankQueueSV.shift();
+      const rawF = (item && item.f && typeof item.f==='object' && !Array.isArray(item.f)) ? item.f : {};
+      const fObj = {};
+      sieveKeys.forEach(k=>{
+        const v = rawF[k];
+        if(v!==null && v!==undefined && v!=='') fObj[k]=v;
+      });
+
+      let idx = -1;
+      if(item?.no) idx = SV.findIndex(s=>sampleKey(s.no)===sampleKey(item.no));
+      if(idx<0 && item?.dish) idx = SV.findIndex(s=>dishKey(s.dish)===dishKey(item.dish));
+      if(idx<0) {
+        // If the current list contains the same number of blank/new records, use one.
+        idx = SV.findIndex(s=>!s.no && !s.dish);
+      }
+
       if(idx>=0){
-        SV[idx].no   = item.no ?? SV[idx].no;
+        SV[idx].no = item.no ?? SV[idx].no;
         SV[idx].dish = item.dish ?? SV[idx].dish;
-        SV[idx].f    = {...SV[idx].f, ...fObj};
+        SV[idx].f = {...(SV[idx].f||{}), ...fObj};
       }else{
         SV.push({no:item.no ?? String(SV.length+1), dish:item.dish ?? '', depth:'', a:null, b:null, c:null, f:fObj});
       }
     });
+
+    // Link a/b/c from Unit Weight without replacing the OCR Retained values.
     syncSieveFromUW(true);
     renderSieve(); buildChart();
     Swal.close();
-    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+    toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
@@ -1437,7 +1561,7 @@ async function runOcrATT(){
   try{
     const prompt = `Extract raw values per sample from the ATTERBERG'S LIMITS form image(s). Use exact visible values; null if missing/unreadable. The application calculates Water Content, LL, PL and PI — do not compute them.`;
 
-    const arr = await callGemini(IMG.att, prompt, 1200, ATT_SCHEMA);
+    const arr = await callGemini(IMG.att, prompt, 1200, ATT_SCHEMA, 'Atterberg');
     if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const isBlankATT = s => !s.no && !s.canNo && !s.blows &&
       (s.a===''||s.a===null||s.a===undefined) && (s.b===''||s.b===null||s.b===undefined) && (s.c===''||s.c===null||s.c===undefined);
@@ -1460,7 +1584,7 @@ async function runOcrATT(){
     });
     renderATT();
     Swal.close();
-    toast(`อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`,'success');
+    toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
@@ -1474,7 +1598,7 @@ async function runOcrUCT(){
   try{
     const prompt = `Extract raw values from this UNCONFINED COMPRESSION TEST form for one specimen. Use exact visible values; null if missing/unreadable. Only include reading rows that have a visible Load Dial (Q) value. Do not calculate Area, Volume, Strain, Corrected Area, Deviator Load, Deviator Stress, qu or Su.`;
 
-    const obj = await callGemini(IMG.uct, prompt, 3072, UCT_SCHEMA);
+    const obj = await callGemini(IMG.uct, prompt, 3072, UCT_SCHEMA, 'UCT');
     if(!obj || typeof obj!=='object' || Array.isArray(obj)) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
     const t = UCT[uctIdx];
     if(obj.no!=null) t.no = obj.no;
@@ -1497,7 +1621,7 @@ async function runOcrUCT(){
     }
     renderUCT();
     Swal.close();
-    toast(`อ่านค่าสำเร็จ (${filled} แถว)`,'success');
+    toast(gemUsageToast(obj.__gemUsage, `อ่านค่าสำเร็จ (${filled} แถว)`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
@@ -1548,12 +1672,29 @@ function xImage(wb, ws, dataUrl, r, colSpan, widthPx=640, heightPx=360){
 }
 
 async function exportExcel(){
-  Swal.fire({title:'กำลังสร้างไฟล์ Excel พร้อมจัดสไตล์...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  // เปิดหน้าต่างสำรองทันทีจาก user gesture เพื่อรองรับ Google Sites/iframe
+  // ซึ่งอาจบล็อกการดาวน์โหลดแบบ Blob ผ่าน <a download> หลัง await
+  let downloadWindow = null;
   try {
-    await new Promise(res=>setTimeout(res, 50)); // ให้ loading spinner แสดงก่อนเริ่มงานหนัก
+    if(window.self !== window.top) downloadWindow = window.open('about:blank','_blank');
+  } catch(e) {}
+
+  if(typeof ExcelJS === 'undefined' || !ExcelJS.Workbook){
+    Swal.fire({icon:'error',title:'ไม่พบ ExcelJS',text:'ไม่สามารถโหลดไลบรารี ExcelJS ได้ กรุณาตรวจสอบ Internet/CDN แล้วลองใหม่'});
+    return;
+  }
+  Swal.fire({title:'กำลังสร้างไฟล์ Excel พร้อมสูตรและจัดสไตล์...', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  try {
+    await new Promise(res=>setTimeout(res, 50));
     const H = header();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Ten Consultants Co., Ltd.';
+    wb.calcProperties.fullCalcOnLoad = true;
+    wb.calcProperties.forceFullCalc = true;
+    wb.calcProperties.calcMode = 'auto';
+
+    const formulaCell = (formula, result=null) => ({formula: String(formula || '').replace(/^=/, ''), result});
+    const excelCol = n => { let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; };
 
     // ===================== SHEET 1 : UNIT WEIGHT & WATER CONTENT =====================
     {
@@ -1565,8 +1706,11 @@ async function exportExcel(){
       r = xRow(ws, r, [{v:`PROJECT: ${H.project}`, span:Math.ceil((1+UW.length)/2)},{v:`LOCATION: ${H.location}`, span:Math.floor((1+UW.length)/2)}]);
       r = xRow(ws, r, [{v:`BORING NO.: ${H.boring}`},{v:`TESTED BY: ${H.tested}`},{v:`DATE: ${H.date}`, span:Math.max(1,UW.length-1)}]);
       r++;
+      const uwHeaderRow = r;
       r = xRow(ws, r, [{v:'รายการ', fill:X_HDR, font:X_WHITE_BOLD, align:'center'}, ...UW.map((_,i)=>({v:`Sample ${i+1}`, fill:X_HDR, font:X_WHITE_BOLD, align:'center'}))]);
+      const uwRowMap = {};
       UW_ROWS.forEach(row=>{
+        uwRowMap[row.key] = r;
         const cells = [{v:`${row.n}. ${row.label} ${row.unit}`, font:{bold:true}}];
         UW.forEach(s=>{
           const c = calcUW(s);
@@ -1575,34 +1719,73 @@ async function exportExcel(){
         });
         r = xRow(ws, r, cells);
       });
+
+      // Replace calculated cells with live Excel formulas so the workbook recalculates when inputs change.
+      UW.forEach((s,idx)=>{
+        const col = excelCol(idx+2);
+        const rowV = uwRowMap.V, rowW = uwRowMap.W, rowGt = uwRowMap.gt;
+        const rowWet = uwRowMap.wet, rowDry = uwRowMap.dry, rowWat = uwRowMap.wat, rowWC = uwRowMap.w;
+        const rD = uwRowMap.D, rH = uwRowMap.H, rSoilMold = uwRowMap.soilMold, rMold = uwRowMap.mold;
+        const ra=uwRowMap.a, rb=uwRowMap.b, rc=uwRowMap.c;
+        ws.getCell(rowV, idx+2).value = formulaCell(`=IF(OR(${col}${rD}=\"\",${col}${rH}=\"\"),\"\",ROUND(PI()*${col}${rD}^2*${col}${rH}/4,2))`, calcUW(s).V);
+        ws.getCell(rowW, idx+2).value = formulaCell(`=IF(OR(${col}${rSoilMold}=\"\",${col}${rMold}=\"\"),\"\",ROUND(${col}${rSoilMold}-${col}${rMold},2))`, calcUW(s).W);
+        ws.getCell(rowGt, idx+2).value = formulaCell(`=IF(OR(${col}${rowW}=\"\",${col}${rowV}=\"\",${col}${rowV}=0),\"\",ROUND(${col}${rowW}/${col}${rowV},2))`, calcUW(s).gt);
+        ws.getCell(rowWet, idx+2).value = formulaCell(`=IF(OR(${col}${rb}=\"\",${col}${ra}=\"\"),\"\",ROUND(${col}${rb}-${col}${ra},2))`, calcUW(s).wet);
+        ws.getCell(rowDry, idx+2).value = formulaCell(`=IF(OR(${col}${rc}=\"\",${col}${ra}=\"\"),\"\",ROUND(${col}${rc}-${col}${ra},2))`, calcUW(s).dry);
+        ws.getCell(rowWat, idx+2).value = formulaCell(`=IF(OR(${col}${rb}=\"\",${col}${rc}=\"\"),\"\",ROUND(${col}${rb}-${col}${rc},2))`, calcUW(s).wat);
+        ws.getCell(rowWC, idx+2).value = formulaCell(`=IF(OR(${col}${rowWat}=\"\",${col}${rowDry}=\"\",${col}${rowDry}=0),\"\",ROUND(${col}${rowWat}/${col}${rowDry}*100,2))`, calcUW(s).w);
+      });
     }
 
     // ===================== SHEET 2 : SIEVE ANALYSIS =====================
     {
       const ws = wb.addWorksheet('SIEVE ANALYSIS', {views:[{showGridLines:false}]});
-      [26,16,14,14,14,16,12,12].forEach((w,i)=> ws.getColumn(i+1).width = w);
+      [26,16,14,14,14,16,12,12,12,14,14,14].forEach((w,i)=> ws.getColumn(i+1).width = w);
+      // Hidden helper columns: I=a, J=b, K=c, L=d (dry sample). They make the exported formulas self-contained.
+      for(let c=9;c<=12;c++) ws.getColumn(c).hidden = true;
       let r = 1;
-      r = xRow(ws, r, [{v:'SIEVE ANALYSIS', span:8, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
-      r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:8}]);
+      r = xRow(ws, r, [{v:'SIEVE ANALYSIS', span:12, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:12}]);
       r++;
-      r = xRow(ws, r, ['Sample No.','Dish No.','Sieve No.','Size (mm)','Retained (gm)','cum. wt. retained','% retained','% Finer']
+      r = xRow(ws, r, ['Sample No.','Dish No.','Sieve No.','Size (mm)','Retained (gm)','cum. wt. retained','% retained','% Finer','a: Container','b: Wet+Cont','c: Dry+Cont','d: Dry Sample']
         .map(v=>({v, fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
       SV.forEach(s=>{
-        const {rows} = calcSieve(s);
+        const {rows,d} = calcSieve(s);
         const startRow = r;
         rows.forEach((row,k)=>{
+          const excelRow = r;
+          const st = sieveFinerStatus(rows,k);
+          const finerFont = st.invalid ? {color:{argb:'FFFF0000'},bold:true} : X_CALC_FONT;
           r = xRow(ws, r, [
-            {v: k===0 ? s.no : '', align:'center'},
-            {v: k===0 ? s.dish : '', align:'center'},
-            {v: row.sieve, align:'center'},
-            {v: row.mm, align:'center'},
-            {v: row.f ?? '', fill:X_INPUT, align:'center'},
-            {v: row.g ?? '', align:'center'},
-            {v: row.h ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},
-            {v: row.i ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}
+            {v:k===0?s.no:'', align:'center'},
+            {v:k===0?s.dish:'', align:'center'},
+            {v:row.sieve, align:'center'},
+            {v:row.mm, align:'center'},
+            {v:row.f ?? '', fill:X_INPUT, align:'center'},
+            {v:formulaCell(`=IF(OR(E${excelRow}=\"\",I${excelRow}=\"\"),\"\",ROUND(E${excelRow}-I${excelRow},2))`, row.g), align:'center'},
+            {v:formulaCell(`=IF(OR(F${excelRow}=\"\",L${excelRow}=\"\",L${excelRow}=0),\"\",ROUND(F${excelRow}/(L${excelRow}/100),2))`, row.h), fill:X_CALC, font:X_CALC_FONT, align:'center'},
+            {v:formulaCell(`=IF(G${excelRow}=\"\",\"\",ROUND(100-G${excelRow},2))`, row.i), fill:X_CALC, font:finerFont, align:'center'},
+            {v:s.a ?? '', fill:X_INPUT, align:'center'},
+            {v:s.b ?? '', fill:X_INPUT, align:'center'},
+            {v:s.c ?? '', fill:X_INPUT, align:'center'},
+            {v:d ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}
           ]);
         });
         if(rows.length>1){ ws.mergeCells(startRow,1,startRow+rows.length-1,1); ws.mergeCells(startRow,2,startRow+rows.length-1,2); }
+        // Add conditional formatting to % Finer for this sample block.
+        const first = startRow, last = startRow + rows.length - 1;
+        // Basic bounds: negative / >100.
+        ws.addConditionalFormatting({ref:`H${first}:H${last}`,rules:[
+          {type:'cellIs',operator:'lessThan',formula:['0'],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'cellIs',operator:'greaterThan',formula:['100'],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
+        ]});
+        // Duplicate / out-of-order values within the same sample.
+        // H values should be non-decreasing in the printed sieve order.
+        ws.addConditionalFormatting({ref:`H${first}:H${last}`,rules:[
+          {type:'expression',formula:[`AND(H${first}<>\"\",COUNTIF($H$${first}:$H$${last},H${first})>1)`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'expression',formula:[`AND(H${first}<>\"\",ROW()>${first},H${first}<OFFSET(H${first},-1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'expression',formula:[`AND(H${first}<>\"\",ROW()<${last},H${first}>OFFSET(H${first},1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
+        ]});
       });
       r++;
       xImage(wb, ws, renderGSDChartImage(), r, 8);
@@ -1618,7 +1801,9 @@ async function exportExcel(){
       r = xRow(ws, r, [{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`, span:1+ATT.length}]);
       r++;
       r = xRow(ws, r, [{v:'รายการ', fill:X_HDR, font:X_WHITE_BOLD, align:'center'}, ...ATT.map((_,i)=>({v:`Sample ${i+1}`, fill:X_HDR, font:X_WHITE_BOLD, align:'center'}))]);
+      const attRowMap={};
       ATT_ROWS.forEach(row=>{
+        attRowMap[row.key]=r;
         const cells = [{v:`${row.n}. ${row.label} ${row.unit}`, font:{bold:true}}];
         ATT.forEach(s=>{
           const c = calcAtterberg(s);
@@ -1626,6 +1811,17 @@ async function exportExcel(){
           cells.push({v:val, fill: row.type==='calc' ? X_CALC : X_INPUT, font: row.type==='calc'?X_CALC_FONT:undefined, align:'center'});
         });
         r = xRow(ws, r, cells);
+      });
+      ATT.forEach((s,idx)=>{
+        const col=excelCol(idx+2);
+        const a=attRowMap.a,b=attRowMap.b,c=attRowMap.c,water=attRowMap.water,dry=attRowMap.drySoil,wc=attRowMap.wc,factor=attRowMap.factor,adj=attRowMap.adjWater,LL=attRowMap.LL,PI=attRowMap.PI,PL=attRowMap.PL;
+        ws.getCell(water,idx+2).value=formulaCell(`=IF(OR(${col}${b}=\"\",${col}${c}=\"\"),\"\",ROUND(${col}${b}-${col}${c},2))`,calcAtterberg(s).water);
+        ws.getCell(dry,idx+2).value=formulaCell(`=IF(OR(${col}${c}=\"\",${col}${a}=\"\"),\"\",ROUND(${col}${c}-${col}${a},2))`,calcAtterberg(s).drySoil);
+        ws.getCell(wc,idx+2).value=formulaCell(`=IF(OR(${col}${water}=\"\",${col}${dry}=\"\",${col}${dry}=0),\"\",ROUND(${col}${water}/${col}${dry}*100,2))`,calcAtterberg(s).wc);
+        ws.getCell(factor,idx+2).value=formulaCell(`=IFERROR(IF(${col}${attRowMap.blows}=\"\",\"\",ROUND((${col}${attRowMap.blows}/25)^0.12,3)),\"\")`,calcAtterberg(s).factor);
+        ws.getCell(LL,idx+2).value=formulaCell(`=IF(OR(${col}${wc}=\"\",${col}${factor}=\"\"),\"\",ROUND(${col}${wc}*${col}${factor},2))`,calcAtterberg(s).LL);
+        ws.getCell(PI,idx+2).value=formulaCell(`=IF(OR(${col}${LL}=\"\",${col}${adj}=\"\"),\"\",ROUND(0.73*(${col}${LL}-20)+${col}${adj},2))`,calcAtterberg(s).PI);
+        ws.getCell(PL,idx+2).value=formulaCell(`=IF(OR(${col}${LL}=\"\",${col}${PI}=\"\"),\"\",ROUND(${col}${LL}-${col}${PI},2))`,calcAtterberg(s).PL);
       });
     }
 
@@ -1645,31 +1841,57 @@ async function exportExcel(){
         r = xRow(ws, r, [{v:'Strain Rate',font:{bold:true}},{v:`${t.strainRate ?? ''} mm/min.`},{v:'Load Scale K',font:{bold:true}},{v:t.K ?? ''},{v:''},{v:''}]);
 
         r = xRow(ws, r, [{v:'SOIL SPECIMEN MEASUREMENTS', span:6, fill:X_SUB, font:X_WHITE_BOLD}]);
+        const rowH=r;
         r = xRow(ws, r, [{v:'Height, h (cm.)'},{v:t.H ?? '', fill:X_INPUT, align:'center'},{v:'Diameter, D (cm.)'},{v:t.D ?? '', fill:X_INPUT, align:'center'},{v:'Area, A (cm²)'},{v:sum.area ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        const areaRow=rowH;
+        const volumeRow=r;
         r = xRow(ws, r, [{v:'Volume, V=A.h (cm³)'},{v:sum.vol ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Wt. Soil+Split Former (g)'},{v:t.soilSplitFormer ?? '-', fill:X_INPUT, align:'center'},{v:'Wt. Split Former (g)'},{v:t.splitFormer ?? '-', fill:X_INPUT, align:'center'}]);
+        const weightRow=r;
         r = xRow(ws, r, [{v:'Weight of Soil, W (g)'},{v:sum.W ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Wet Unit Weight, γt (t/m³)'},{v:sum.gt ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Dry Unit Weight, γd (t/m³)'},{v:sum.gd ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        const gtRow=weightRow;
 
         r = xRow(ws, r, [{v:'WATER CONTENT DETERMINATION', span:6, fill:X_SUB, font:X_WHITE_BOLD}]);
+        const contRow=r;
         r = xRow(ws, r, [{v:'Container No.'},{v:t.cont ?? '', fill:X_INPUT, align:'center'},{v:'Wt. Wet Soil+Container (g)'},{v:t.b ?? '', fill:X_INPUT, align:'center'},{v:'Wt. Dry Soil+Container (g)'},{v:t.c ?? '', fill:X_INPUT, align:'center'}]);
+        const waterInputRow=r;
         r = xRow(ws, r, [{v:'Weight of Container (g)'},{v:t.a ?? '', fill:X_INPUT, align:'center'},{v:'Weight of Water (g)'},{v:sum.water ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:'Weight of Dry Soil (g)'},{v:sum.drySoil ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        const waterCalcRow=r;
+        const wcRow=r+1;
         r = xRow(ws, r, [{v:'Water Content, w (%)', font:{bold:true}},{v:sum.wc ?? '', span:5, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+
+        // Live formulas for specimen calculations.
+        ws.getCell(areaRow,6).value=formulaCell(`=IF(D${areaRow}=\"\",\"\",ROUND(PI()*D${areaRow}^2/4,3))`,sum.area);
+        ws.getCell(volumeRow,2).value=formulaCell(`=IF(OR(B${areaRow}=\"\",F${areaRow}=\"\"),\"\",ROUND(F${areaRow}*B${areaRow},2))`,sum.vol);
+        ws.getCell(weightRow,2).value=formulaCell(`=IF(OR(D${waterInputRow}=\"\",B${waterCalcRow}=\"\"),\"\",ROUND(D${waterInputRow}-B${waterCalcRow},2))`,sum.W);
+        ws.getCell(weightRow,4).value=formulaCell(`=IF(OR(D${waterInputRow}=\"\",F${waterCalcRow}=\"\"),\"\",ROUND((D${waterInputRow}-F${waterCalcRow})/${`B${weightRow}`},2))`,sum.gt);
+        ws.getCell(weightRow,6).value=formulaCell(`=IF(OR(D${weightRow}=\"\",B${wcRow}=\"\"),\"\",ROUND(100*D${weightRow}/(100+B${wcRow}),2))`,sum.gd);
+        ws.getCell(waterCalcRow,4).value=formulaCell(`=IF(OR(D${waterInputRow}=\"\",F${waterInputRow}=\"\"),\"\",ROUND(D${waterInputRow}-F${waterInputRow},2))`,sum.water);
+        ws.getCell(waterCalcRow,6).value=formulaCell(`=IF(OR(F${waterInputRow}=\"\",B${waterCalcRow}=\"\"),\"\",ROUND(F${waterInputRow}-B${waterCalcRow},2))`,sum.drySoil);
+        ws.getCell(wcRow,2).value=formulaCell(`=IF(OR(D${waterCalcRow}=\"\",F${waterCalcRow}=\"\",F${waterCalcRow}=0),\"\",ROUND(D${waterCalcRow}/F${waterCalcRow}*100,2))`,sum.wc);
 
         r++;
         r = xRow(ws, r, ["Deformation Dial, R","Load Dial, Q","Axial Strain, E","Corrected Area, A'","Deviator Load, P","Deviator Stress"]
           .map(v=>({v, fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
+        const firstReadingRow=r;
         UCT_R.forEach((R,i)=>{
+          const excelRow=r;
           const c = calcUCTRow(t, R, t.Q[i]);
           r = xRow(ws, r, [
             {v:R, align:'center'},
             {v:t.Q[i] ?? '', fill:X_INPUT, align:'center'},
-            {v:c.strain ?? '', align:'center'},
-            {v:c.corrArea ?? '', align:'center'},
-            {v:c.load ?? '', align:'center'},
-            {v:c.stress ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}
+            {v:formulaCell(`=IF(OR(B${areaRow}=\"\",B${areaRow}=0,B${excelRow}=\"\"),\"\",ROUND((A${excelRow}*0.01)/(10*B${areaRow}),4))`,c.strain), align:'center'},
+            {v:formulaCell(`=IF(OR(F${areaRow}=\"\",C${excelRow}=\"\",1-C${excelRow}=0),\"\",ROUND(F${areaRow}/(1-C${excelRow}),3))`,c.corrArea), align:'center'},
+            {v:formulaCell(`=IF(OR(B${excelRow}=\"\",D${excelRow}=\"\"),\"\",ROUND(B${excelRow}*D${excelRow},3))`,c.load), align:'center'},
+            {v:formulaCell(`=IF(OR(E${excelRow}=\"\",D${excelRow}=\"\",D${excelRow}=0),\"\",ROUND(E${excelRow}*10/D${excelRow},2))`,c.stress), fill:X_CALC, font:X_CALC_FONT, align:'center'}
           ]);
         });
-        r = xRow(ws, r, [{v:'Unconfined Compressive Strength (qu)', span:5, font:{bold:true}},{v:`${sum.qu ?? ''} t/m²`, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
-        r = xRow(ws, r, [{v:'Undrained Shear Strength (Su)', span:5, font:{bold:true}},{v:`${sum.su ?? ''} t/m²`, fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        const lastReadingRow=r-1;
+        const quRow=r;
+        r = xRow(ws, r, [{v:'Unconfined Compressive Strength (qu)', span:5, font:{bold:true}},{v:sum.qu ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        const suRow=r;
+        r = xRow(ws, r, [{v:'Undrained Shear Strength (Su)', span:5, font:{bold:true}},{v:sum.su ?? '', fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+        ws.getCell(quRow,6).value=formulaCell(`=IFERROR(ROUND(MAX(F${firstReadingRow}:F${lastReadingRow}),2),\"\")`,sum.qu);
+        ws.getCell(suRow,6).value=formulaCell(`=IF(F${quRow}=\"\",\"\",ROUND(F${quRow}/2,2))`,sum.su);
         r++;
         r = xImage(wb, ws, renderUCTChartImage(t), r, 6);
       });
@@ -1680,40 +1902,69 @@ async function exportExcel(){
       const ws = wb.addWorksheet('SUMMARY', {views:[{showGridLines:false}]});
       ws.getColumn(1).width = 14;
       SUM_COLS.forEach((_,i)=> ws.getColumn(i+2).width = 13);
-      const stats = calcSummaryStats();
       let r = 1;
       r = xRow(ws, r, [{v:'SUMMARY OF TEST RESULTS', span:SUM_COLS.length, font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
       r = xRow(ws, r, [{v:`PROJECT: ${H.project}`, span:3},{v:`BORING NO.: ${H.boring}`, span:2},{v:`TESTED BY: ${H.tested}`},{v:`DATE: ${H.date}`, span:Math.max(1,SUM_COLS.length-6)}]);
       r = xRow(ws, r, [{v:`LOCATION: ${H.location}`, span:3},{v:`TOTAL DEPTH: ${H.totalDepth}`, span:2},{v:`CHECKED BY: ${H.check}`},{v:'', span:Math.max(1,SUM_COLS.length-6)}]);
       r++;
       r = xRow(ws, r, SUM_COLS.map(c=>({v:`${c.label.replace('<br>',' ')} ${c.unit?`(${c.unit})`:''}`.trim(), fill:X_SUB, font:X_WHITE_BOLD, align:'center'})));
-      SUM.forEach(s=>{
+      const sumStartRow=r;
+      SUM.forEach((s,si)=>{
         const calc = calcSummaryRow(s);
+        const excelRow=r;
         r = xRow(ws, r, SUM_COLS.map(c=>{
-          if(c.key==='pi') return {v:show(calc.pi), fill:X_CALC, font:X_CALC_FONT, align:'center'};
+          if(c.key==='pi') return {v:formulaCell(`=IF(OR(E${excelRow}=\"\",F${excelRow}=\"\"),\"\",ROUND(E${excelRow}-F${excelRow},2))`,calc.pi), fill:X_CALC, font:X_CALC_FONT, align:'center'};
           if(c.key==='uscs') return {v:s.uscs || calc.uscsAuto || '', fill:X_INPUT, align:'center'};
           return {v:show(s[c.key]), fill:X_INPUT, align:'center'};
         }));
       });
       r++;
+      const statHeader=r;
       r = xRow(ws, r, [{v:'', span:1},{v:'Min', fill:X_SUB, font:X_WHITE_BOLD, align:'center'},{v:'Max', fill:X_SUB, font:X_WHITE_BOLD, align:'center'}]);
-      r = xRow(ws, r, [{v:'Wn (%)'},{v:show(stats.wnMin), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:show(stats.wnMax), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
-      r = xRow(ws, r, [{v:'qu (t/m²)'},{v:show(stats.quMin), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:show(stats.quMax), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+      const wnStatRow=r;
+      r = xRow(ws, r, [{v:'Wn (%)'},{v:formulaCell(`=IFERROR(ROUND(MIN(D${sumStartRow}:D${r-1}),2),\"\")`,null), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:formulaCell(`=IFERROR(ROUND(MAX(D${sumStartRow}:D${r-1}),2),\"\")`,null), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
+      const quStatRow=r;
+      r = xRow(ws, r, [{v:'qu (t/m²)'},{v:formulaCell(`=IFERROR(ROUND(MIN(Q${sumStartRow}:Q${r-2}),2),\"\")`,null), fill:X_CALC, font:X_CALC_FONT, align:'center'},{v:formulaCell(`=IFERROR(ROUND(MAX(Q${sumStartRow}:Q${r-2}),2),\"\")`,null), fill:X_CALC, font:X_CALC_FONT, align:'center'}]);
     }
 
     const buffer = await wb.xlsx.writeBuffer();
+    if(!buffer || !buffer.byteLength) throw new Error('ExcelJS สร้างไฟล์ว่าง (0 bytes)');
+
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     const boringNo = document.getElementById('pjBoring').value || 'BH-1';
-    a.download = `Soil_Lab_Results_${boringNo}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const fileName = `Soil_Lab_Results_${boringNo}.xlsx`;
 
-    Swal.fire({icon:'success',title:'ดาวน์โหลดไฟล์สำเร็จ',text:a.download,timer:1500,showConfirmButton:false});
+    const inFrame = window.self !== window.top;
+
+    // วิธีหลัก: ถ้าอยู่ใน iframe/Google Sites ให้ใช้หน้าต่างที่เปิดไว้จาก user gesture
+    // แล้วนำ Blob URL ไปเปิดในหน้าต่างนั้น เพื่อหลีกเลี่ยง sandbox download restriction
+    if(inFrame && downloadWindow && !downloadWindow.closed){
+      downloadWindow.location.href = url;
+    } else {
+      // วิธีปกติเมื่อเปิด HTML โดยตรง
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 2000);
+    }
+
+    // เก็บ Blob URL ไว้ให้นานพอสำหรับ Browser/iframe
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 120000);
+
+    Swal.fire({
+      icon:'success',
+      title:'สร้างไฟล์ Excel สำเร็จ',
+      html:`<div class="text-sm text-left">ไฟล์: <b>${fileName}</b><br>ขนาด: <b>${(blob.size/1024).toFixed(1)} KB</b><br>${inFrame ? '<span class="text-amber-600">เปิดไฟล์ Excel ในแท็บใหม่แล้ว หาก Browser ไม่ดาวน์โหลดอัตโนมัติ ให้กด Ctrl+S ในแท็บนั้น</span>' : 'เริ่มดาวน์โหลดไฟล์แล้ว'}</div>`,
+      timer: inFrame ? 5000 : 2200,
+      showConfirmButton:false
+    });
   } catch(err) {
-    Swal.fire({icon:'error', title:'เกิดข้อผิดพลาด', text:err.message});
+    console.error('Excel export error:', err);
+    Swal.fire({icon:'error', title:'Export Excel ไม่สำเร็จ', text:(err && err.message) ? err.message : String(err)});
   }
 }
 
@@ -1733,23 +1984,52 @@ function switchTab(name){
 }
 
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function gemUsageToast(u, label){
+  if(!u) return '';
+  const model=GEM_PRICING[u.model]?.name || u.model || '';
+  return `${label} · ${model} · ${u.total.toLocaleString()} tokens · ~$${u.usd.toFixed(4)}`;
+}
+function updateAiBadge(){
+  const el=document.getElementById('aiModeBadge');
+  if(el) el.textContent=`AI: ${gemModeLabel()}`;
+}
 function openSettings(note){
+  const us=gemUsageSummary();
+  const usd=us.usd.toFixed(4);
   Swal.fire({
     title:'ตั้งค่า AI OCR',
+    width:620,
     html:`
       ${note ? `<div class="text-xs text-[#a04040] mb-2 text-left">${note}</div>` : ''}
       <input id="swGem" class="swal2-input !text-xs" placeholder="Gemini API Key (สำหรับปุ่ม OCR)" value="${CFG.GEM_KEY}">
-      <div class="text-[10px] text-slate-400 mt-1">ขอ Gemini API Key ฟรีได้ที่ aistudio.google.com/apikey — คีย์จะถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น</div>
+      <div class="text-[10px] text-slate-400 mt-1">API Key จะถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น</div>
+      <div class="mt-4 text-left">
+        <label class="text-xs font-semibold text-slate-600">โหมด AI OCR</label>
+        <select id="swGemMode" class="swal2-select !text-xs w-full mt-1" style="margin:6px 0 0;width:100%">
+          <option value="auto" ${CFG.GEM_MODE==='auto'?'selected':''}>Auto — Flash-Lite ก่อน / Pro เมื่อจำเป็น</option>
+          <option value="flash" ${CFG.GEM_MODE==='flash'?'selected':''}>Flash-Lite — ประหยัดและเร็ว</option>
+          <option value="pro" ${CFG.GEM_MODE==='pro'?'selected':''}>Pro — เน้นความสามารถสูงสุด</option>
+        </select>
+      </div>
+      <div class="mt-4 p-3 rounded-lg bg-slate-50 border border-slate-200 text-left text-[11px]">
+        <div class="font-semibold text-slate-700 mb-1">การใช้ API ในเบราว์เซอร์นี้</div>
+        <div>จำนวนคำขอ: <b>${us.calls}</b> ครั้ง</div>
+        <div>Input: <b>${us.input.toLocaleString()}</b> tokens · Output: <b>${us.output.toLocaleString()}</b> tokens</div>
+        <div>Total: <b>${us.total.toLocaleString()}</b> tokens · ประมาณ <b>$${usd}</b></div>
+      </div>
+      <div class="mt-2 text-[10px] text-slate-400 text-left">ราคาที่ใช้คำนวณเป็น Standard Paid Tier ของ Google และเป็นเพียงประมาณการจาก usageMetadata ที่ API ส่งกลับ</div>
     `,
     confirmButtonText:'บันทึก', confirmButtonColor:'#3845a8',
-    preConfirm:()=>document.getElementById('swGem').value.trim()
+    preConfirm:()=>({key:document.getElementById('swGem').value.trim(),mode:document.getElementById('swGemMode').value})
   }).then(r=>{
     if(r.isConfirmed){
-      CFG.GEM_KEY=r.value; localStorage.setItem('gemKey',CFG.GEM_KEY);
-      toast('บันทึกแล้ว');
+      CFG.GEM_KEY=r.value.key; CFG.GEM_MODE=r.value.mode;
+      localStorage.setItem('gemKey',CFG.GEM_KEY); localStorage.setItem('gemMode',CFG.GEM_MODE);
+      updateAiBadge(); toast('บันทึกการตั้งค่า AI แล้ว');
     }
   });
 }
+
 function clearAllUW(){
   Swal.fire({
     icon:'warning', title:'ล้างข้อมูล Unit Weight ทั้งหมด?',
@@ -1814,6 +2094,7 @@ function clearAllUCT(){
   });
 }
 
+updateAiBadge();
 document.getElementById('btnSettings').onclick = ()=>openSettings();
 document.getElementById('btnExport').onclick = exportExcel;
 document.getElementById('filterUW').addEventListener('input', renderUW);
