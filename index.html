@@ -42,10 +42,41 @@ tailwind.config = {
   ::-webkit-scrollbar{height:9px;width:9px}
   ::-webkit-scrollbar-thumb{background:#cacde2;border-radius:6px}
   @media print{.no-print{display:none!important}}
+  #authGate{position:fixed;inset:0;z-index:99999;background:rgba(15,24,90,.96);display:flex;align-items:center;justify-content:center;padding:20px;}
+  #authGate.hidden{display:none!important;}
+  #appShell{display:none;}
+  #appShell.auth-ready{display:block;}
+
 </style>
 </head>
 
 <body class="font-sans text-slate-700">
+
+<!-- ================= LOCAL USER LOGIN ================= -->
+<div id="authGate">
+  <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
+    <div class="text-center mb-5">
+      <div class="text-3xl mb-2">🔐</div>
+      <h2 class="text-xl font-bold text-[#1d2772]">เข้าสู่ระบบ Soil Laboratory</h2>
+      <p class="text-xs text-slate-500 mt-1">ผู้ใช้แต่ละคนมี API Key และข้อมูลของตนเองแยกจากกัน</p>
+    </div>
+    <div class="flex gap-2 mb-4">
+      <button id="authTabLogin" class="flex-1 py-2 rounded-lg bg-[#1d2772] text-white text-sm font-semibold">เข้าสู่ระบบ</button>
+      <button id="authTabRegister" class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm font-semibold">สร้างผู้ใช้</button>
+    </div>
+    <div id="authError" class="hidden mb-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs"></div>
+    <label class="block text-xs font-semibold text-slate-600">ชื่อผู้ใช้</label>
+    <input id="authUser" autocomplete="username" class="mt-1 mb-3 w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#9aa1d0]" placeholder="เช่น user01">
+    <label class="block text-xs font-semibold text-slate-600">รหัสผ่าน</label>
+    <input id="authPass" type="password" autocomplete="current-password" class="mt-1 mb-4 w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#9aa1d0]" placeholder="อย่างน้อย 6 ตัวอักษร">
+    <button id="authSubmit" class="w-full py-2.5 rounded-lg bg-[#3845a8] hover:bg-[#283387] text-white font-bold">เข้าสู่ระบบ</button>
+    <div class="mt-4 text-[10px] text-slate-400 leading-relaxed">
+      ระบบนี้เป็นการ Login แบบ Browser-local สำหรับไฟล์ HTML แบบ standalone ข้อมูลผู้ใช้และ API Key จะถูกเก็บแยกตาม Browser/ผู้ใช้ และไม่มี API Key ฝังอยู่ใน source code
+    </div>
+  </div>
+</div>
+
+<div id="appShell">
 
 <!-- ================= HEADER ================= -->
 <header class="bg-[#0f185a] text-white shadow-lg border-b-2 border-[#c9a227]/70">
@@ -58,8 +89,10 @@ tailwind.config = {
       </div>
     </div>
     <div class="flex items-center gap-2.5 no-print">
+      <span id="userBadge" class="px-3 py-2 text-[11px] rounded-lg bg-white/10 border border-white/10 text-slate-200">User: -</span>
       <span id="aiModeBadge" class="px-3 py-2 text-[11px] rounded-lg bg-white/10 border border-white/10 text-slate-200">AI: Auto</span>
        <button id="btnSettings" class="px-4 py-2.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 transition font-medium border border-white/10">⚙ ตั้งค่า</button>
+      <button id="btnLogout" class="px-4 py-2.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 transition font-medium border border-white/10">ออกจากระบบ</button>
       <button id="btnExport"   class="px-5 py-2.5 text-sm font-bold rounded-lg bg-[#c9a227] hover:bg-[#b38f1f] text-[#12205c] transition shadow">⤓ Export Excel (Styled)</button>
     </div>
   </div>
@@ -376,17 +409,75 @@ tailwind.config = {
   Ten Consultants Co., Ltd. — Geotechnical Laboratory Module · ค่าที่คำนวณปัดทศนิยม 2 ตำแหน่ง
 </footer>
 
+</div><!-- /appShell -->
+
 <script>
 /* =====================================================================
    CONFIG
    ===================================================================== */
+/* =====================================================================
+   LOCAL USER AUTH / PER-USER STORAGE
+   ===================================================================== */
+const AUTH_USERS_KEY='tenConsultantsAuthUsersV1';
+const AUTH_SESSION_KEY='tenConsultantsAuthSessionV1';
+let ACTIVE_USER='';
+function authUsers(){try{return JSON.parse(localStorage.getItem(AUTH_USERS_KEY)||'{}')||{};}catch(e){return {};}}
+function saveAuthUsers(u){localStorage.setItem(AUTH_USERS_KEY,JSON.stringify(u));}
+function normUser(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');}
+async function hashText(v){const data=new TextEncoder().encode(String(v));const buf=await crypto.subtle.digest('SHA-256',data);return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+function userKey(prefix){return `${prefix}::${ACTIVE_USER}`;}
+function userGemKey(){return userKey('gemKeyV1');}
+function userGemModeKey(){return userKey('gemModeV1');}
+function userUsageKey(){return userKey('gemUsageV1');}
+function userStateKey(){return userKey('tenConsultantsSoilLabStateV20');}
+function getSavedUser(){return normUser(localStorage.getItem(AUTH_SESSION_KEY)||'');}
+
 const CFG = {
-  GEM_KEY : localStorage.getItem('gemKey')  || '',
-  GEM_MODE: localStorage.getItem('gemMode') || 'auto',
+  GEM_KEY : '',
+  GEM_MODE: 'auto',
   GEM_PRIMARY: 'gemini-3.1-flash-lite',
   GEM_STABLE_FALLBACK: 'gemini-3.5-flash-lite',
   GEM_FALLBACK: 'gemini-3.1-pro-preview'
 };
+function loadUserSettings(){
+  CFG.GEM_KEY=ACTIVE_USER ? (localStorage.getItem(userGemKey())||'') : '';
+  CFG.GEM_MODE=ACTIVE_USER ? (localStorage.getItem(userGemModeKey())||'auto') : 'auto';
+}
+function clearAuthError(){const e=document.getElementById('authError');if(e)e.classList.add('hidden');}
+function showAuthError(msg){const e=document.getElementById('authError');if(e){e.textContent=msg;e.classList.remove('hidden');}}
+function setAuthMode(mode){
+  const login=mode==='login';
+  document.getElementById('authTabLogin').className='flex-1 py-2 rounded-lg text-sm font-semibold '+(login?'bg-[#1d2772] text-white':'bg-slate-100 text-slate-600');
+  document.getElementById('authTabRegister').className='flex-1 py-2 rounded-lg text-sm font-semibold '+(!login?'bg-[#1d2772] text-white':'bg-slate-100 text-slate-600');
+  document.getElementById('authSubmit').textContent=login?'เข้าสู่ระบบ':'สร้างผู้ใช้';
+  document.getElementById('authPass').autocomplete=login?'current-password':'new-password';
+  document.getElementById('authSubmit').dataset.mode=mode;
+  clearAuthError();
+}
+async function authenticate(){
+  const mode=document.getElementById('authSubmit').dataset.mode||'login';
+  const username=normUser(document.getElementById('authUser').value);
+  const password=document.getElementById('authPass').value||'';
+  if(!username) return showAuthError('กรุณาระบุชื่อผู้ใช้');
+  if(username.length<3) return showAuthError('ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร');
+  if(password.length<6) return showAuthError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+  const users=authUsers();
+  const hash=await hashText(password);
+  if(mode==='register'){
+    if(users[username]) return showAuthError('ชื่อผู้ใช้นี้มีอยู่แล้ว กรุณาเข้าสู่ระบบ');
+    users[username]={passwordHash:hash,createdAt:new Date().toISOString()};
+    saveAuthUsers(users);
+  }else{
+    if(!users[username] || users[username].passwordHash!==hash) return showAuthError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+  }
+  ACTIVE_USER=username;
+  localStorage.setItem(AUTH_SESSION_KEY,ACTIVE_USER);
+  loadUserSettings();
+  document.getElementById('authGate').classList.add('hidden');
+  document.getElementById('appShell').classList.add('auth-ready');
+  bootApp();
+}
+
 
 // Gemini API Standard Paid-Tier pricing (USD / 1M tokens).
 // Flash-Lite = low-cost/high-volume OCR; Pro = fallback for difficult OCR.
@@ -396,13 +487,11 @@ const GEM_PRICING = {
   'gemini-3.5-flash-lite': {name:'Gemini 3.5 Flash-Lite', input:0.25, output:1.50},
   'gemini-3.1-pro-preview': {name:'Gemini 3.1 Pro', input:2.00, output:12.00}
 };
-const GEM_USAGE_KEY = 'gemUsageV6';
-let GEM_USAGE = (()=>{
-  try{return JSON.parse(localStorage.getItem(GEM_USAGE_KEY)||'[]')||[];}catch(e){return [];}
-})();
+let GEM_USAGE = [];
+function loadGemUsage(){try{GEM_USAGE=JSON.parse(localStorage.getItem(userUsageKey())||'[]')||[];}catch(e){GEM_USAGE=[];}}
 function saveGemUsage(){
   GEM_USAGE = GEM_USAGE.slice(-500);
-  localStorage.setItem(GEM_USAGE_KEY, JSON.stringify(GEM_USAGE));
+  localStorage.setItem(userUsageKey(), JSON.stringify(GEM_USAGE));
 }
 function recordGemUsage(meta, category, model, imageCount){
   const u = meta || {};
@@ -533,9 +622,9 @@ function summaryHasData(arr){
 /* =====================================================================
    PERSISTENT PROJECT STATE
    ===================================================================== */
-const APP_STATE_KEY='tenConsultantsSoilLabStateV19';
+function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(APP_STATE_KEY,JSON.stringify({version:19,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:20,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -549,10 +638,10 @@ function loadAppState(){
   try{
     // v18 intentionally uses a new storage namespace. Older v14/v17 OCR snapshots
     // must never replace the sample dataset bundled in this HTML file.
-    const raw=localStorage.getItem(APP_STATE_KEY);
+    const raw=localStorage.getItem(appStateKey());
     if(!raw) return false;
     const st=JSON.parse(raw);
-    if(!st || Number(st.version)!==19) return false;
+    if(!st || Number(st.version)!==20) return false;
     _loadingState=true;
     if(st.project) Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});
     // Only restore a module when the saved module actually contains data.
@@ -2475,7 +2564,7 @@ function openSettings(note){
   }).then(r=>{
     if(r.isConfirmed){
       CFG.GEM_KEY=r.value.key; CFG.GEM_MODE=r.value.mode;
-      localStorage.setItem('gemKey',CFG.GEM_KEY); localStorage.setItem('gemMode',CFG.GEM_MODE);
+      localStorage.setItem(userGemKey(),CFG.GEM_KEY); localStorage.setItem(userGemModeKey(),CFG.GEM_MODE);
       updateAiBadge(); toast('บันทึกการตั้งค่า AI แล้ว');
     }
   });
@@ -2545,77 +2634,112 @@ function clearAllUCT(){
   });
 }
 
-updateAiBadge();
-document.getElementById('btnSettings').onclick = ()=>openSettings();
-document.getElementById('btnExport').onclick = exportExcel;
-document.getElementById('filterUW').addEventListener('input', renderUW);
-document.getElementById('filterSV').addEventListener('input', renderSieve);
-document.getElementById('filterSieve').addEventListener('change', renderSieve);
-document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false);
-document.getElementById('addUW').onclick = ()=>{ UW.push({no:String(UW.length+1),depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
-document.getElementById('delUW').onclick = ()=>{ if(UW.length>1){UW.pop(); renderUW();} };
-document.getElementById('addSV').onclick = ()=>{ SV.push({no:String(SV.length+1),dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
-document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
-document.getElementById('clrUW').onclick = clearAllUW;
-document.getElementById('clrSV').onclick = clearAllSV;
-document.getElementById('addATT').onclick = ()=>{ ATT.push({no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}); renderATT(); };
-document.getElementById('delATT').onclick = ()=>{ if(ATT.length>1){ATT.pop(); renderATT();} };
-document.getElementById('clrATT').onclick = clearAllATT;
-document.getElementById('prevUCT').onclick = ()=>{ if(uctIdx>0){uctIdx--; renderUCT();} };
-document.getElementById('nextUCT').onclick = ()=>{ if(uctIdx<UCT.length-1){uctIdx++; renderUCT();} };
-document.getElementById('addUCT').onclick = ()=>{ UCT.push(newUCT()); uctIdx = UCT.length-1; renderUCT(); };
-document.getElementById('delUCT').onclick = ()=>{
-  if(UCT.length>1){ UCT.splice(uctIdx,1); if(uctIdx>=UCT.length) uctIdx=UCT.length-1; renderUCT(); }
-};
-document.getElementById('clrUCT').onclick = clearAllUCT;
-document.getElementById('addSUM').onclick = ()=>{ SUM.push({no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}); renderSUM(); };
-document.getElementById('delSUM').onclick = ()=>{ if(SUM.length>1){SUM.pop(); renderSUM();} };
-document.getElementById('clrSUM').onclick = ()=>{
-  Swal.fire({
-    icon:'warning', title:'ล้างข้อมูล Summary ทั้งหมด?',
-    text:'จะลบข้อมูลทุกตัวอย่างในตารางนี้',
-    showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
-  }).then(r=>{
-    if(!r.isConfirmed) return;
-    SUM = [{no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}];
-    renderSUM();
-    toast('ล้างข้อมูล Summary แล้ว');
+function updateUserBadge(){
+  const el=document.getElementById('userBadge');
+  if(el) el.textContent=`User: ${ACTIVE_USER || '-'}`;
+}
+function logoutUser(){
+  saveAppState();
+  localStorage.removeItem(AUTH_SESSION_KEY);
+  ACTIVE_USER='';
+  CFG.GEM_KEY=''; CFG.GEM_MODE='auto'; GEM_USAGE=[];
+  document.getElementById('appShell').classList.remove('auth-ready');
+  document.getElementById('authGate').classList.remove('hidden');
+  document.getElementById('authPass').value='';
+  setAuthMode('login');
+}
+
+function bootApp(){
+  loadUserSettings();
+  loadGemUsage();
+  updateUserBadge();
+  updateAiBadge();
+  document.getElementById('btnSettings').onclick = ()=>openSettings();
+  document.getElementById('btnLogout').onclick = logoutUser;
+  document.getElementById('btnExport').onclick = exportExcel;
+  document.getElementById('filterUW').addEventListener('input', renderUW);
+  document.getElementById('filterSV').addEventListener('input', renderSieve);
+  document.getElementById('filterSieve').addEventListener('change', renderSieve);
+  document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false);
+  document.getElementById('addUW').onclick = ()=>{ UW.push({no:String(UW.length+1),depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
+  document.getElementById('delUW').onclick = ()=>{ if(UW.length>1){UW.pop(); renderUW();} };
+  document.getElementById('addSV').onclick = ()=>{ SV.push({no:String(SV.length+1),dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
+  document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
+  document.getElementById('clrUW').onclick = clearAllUW;
+  document.getElementById('clrSV').onclick = clearAllSV;
+  document.getElementById('addATT').onclick = ()=>{ ATT.push({no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}); renderATT(); };
+  document.getElementById('delATT').onclick = ()=>{ if(ATT.length>1){ATT.pop(); renderATT();} };
+  document.getElementById('clrATT').onclick = clearAllATT;
+  document.getElementById('prevUCT').onclick = ()=>{ if(uctIdx>0){uctIdx--; renderUCT();} };
+  document.getElementById('nextUCT').onclick = ()=>{ if(uctIdx<UCT.length-1){uctIdx++; renderUCT();} };
+  document.getElementById('addUCT').onclick = ()=>{ UCT.push(newUCT()); uctIdx = UCT.length-1; renderUCT(); };
+  document.getElementById('delUCT').onclick = ()=>{
+    if(UCT.length>1){ UCT.splice(uctIdx,1); if(uctIdx>=UCT.length) uctIdx=UCT.length-1; renderUCT(); }
+  };
+  document.getElementById('clrUCT').onclick = clearAllUCT;
+  document.getElementById('addSUM').onclick = ()=>{ SUM.push({no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}); renderSUM(); };
+  document.getElementById('delSUM').onclick = ()=>{ if(SUM.length>1){SUM.pop(); renderSUM();} };
+  document.getElementById('clrSUM').onclick = ()=>{
+    Swal.fire({
+      icon:'warning', title:'ล้างข้อมูล Summary ทั้งหมด?',
+      text:'จะลบข้อมูลทุกตัวอย่างในตารางนี้',
+      showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
+    }).then(r=>{
+      if(!r.isConfirmed) return;
+      SUM = [{no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}];
+      renderSUM();
+      toast('ล้างข้อมูล Summary แล้ว');
+    });
+  };
+  document.getElementById('syncSUM').onclick = syncSummaryFromModules;
+
+  bindDrop('dzUW','fileUW','prevUW','uw');
+  bindDrop('dzSV','fileSV','prevSV','sv');
+  bindDrop('dzATT','fileATT','prevATT','att');
+  bindDrop('dzUCT','fileUCT','prevUCTImg','uct');
+  document.getElementById('ocrUW').addEventListener('click', runOcrUW);
+  document.getElementById('ocrSV').addEventListener('click', runOcrSV);
+  document.getElementById('ocrATT').addEventListener('click', runOcrATT);
+  document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
+
+  loadAppState();
+  // Keep the original Html_V13 Summary sample data on startup.
+  // Cross-module synchronization remains available through the Summary button only;
+  // it must never silently overwrite the source sample dataset during startup.
+  if(!summaryHasData(SUM)) SUM=cloneDefaultSummary();
+  renderSUM();
+
+  SIEVES.forEach(s=>{
+    const o=document.createElement('option'); o.value=s.name; o.textContent=s.name;
+    document.getElementById('filterSieve').appendChild(o);
   });
-};
-document.getElementById('syncSUM').onclick = syncSummaryFromModules;
 
-bindDrop('dzUW','fileUW','prevUW','uw');
-bindDrop('dzSV','fileSV','prevSV','sv');
-bindDrop('dzATT','fileATT','prevATT','att');
-bindDrop('dzUCT','fileUCT','prevUCTImg','uct');
-document.getElementById('ocrUW').addEventListener('click', runOcrUW);
-document.getElementById('ocrSV').addEventListener('click', runOcrSV);
-document.getElementById('ocrATT').addEventListener('click', runOcrATT);
-document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
+  switchTab('uw');
+  renderUW();
+  // Restore the original Html_V13 linkage: Sieve sample a/b/c are linked from Unit Weight
+  // by container/dish (or sample number), while retained sieve values remain untouched.
+  syncSieveFromUW(true);
+  // Recalculate all derived Sieve fields immediately after restoring/linking source data.
+  renderSieve(); buildChart();
+  // syncSieveFromUW() already links source fields and rebuilds the Grain Size chart.
+  renderATT();
+  renderUCT();
+  // Summary is rendered from the original source sample dataset; sync is manual via the Summary button.
+}
 
-loadAppState();
-// Keep the original Html_V13 Summary sample data on startup.
-// Cross-module synchronization remains available through the Summary button only;
-// it must never silently overwrite the source sample dataset during startup.
-if(!summaryHasData(SUM)) SUM=cloneDefaultSummary();
-renderSUM();
-
-SIEVES.forEach(s=>{
-  const o=document.createElement('option'); o.value=s.name; o.textContent=s.name;
-  document.getElementById('filterSieve').appendChild(o);
+// Authentication UI is initialized before the application data is loaded.
+window.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('authTabLogin').onclick=()=>setAuthMode('login');
+  document.getElementById('authTabRegister').onclick=()=>setAuthMode('register');
+  document.getElementById('authSubmit').onclick=authenticate;
+  document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')authenticate();});
+  const saved=getSavedUser();
+  const users=authUsers();
+  if(saved && users[saved]){
+    document.getElementById('authUser').value=saved;
+  }
+  setAuthMode('login');
 });
-
-switchTab('uw');
-renderUW();
-// Restore the original Html_V13 linkage: Sieve sample a/b/c are linked from Unit Weight
-// by container/dish (or sample number), while retained sieve values remain untouched.
-syncSieveFromUW(true);
-// Recalculate all derived Sieve fields immediately after restoring/linking source data.
-renderSieve(); buildChart();
-// syncSieveFromUW() already links source fields and rebuilds the Grain Size chart.
-renderATT();
-renderUCT();
-// Summary is rendered from the original source sample dataset; sync is manual via the Summary button.
 </script>
 </body>
 </html>
