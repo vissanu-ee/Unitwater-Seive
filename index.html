@@ -532,21 +532,38 @@ function calcSieve(s){
 }
 
 // Validate % Finer in the required sieve order: 3/4, 3/8, #4, #10, #40, #100, #200, PAN.
-// A blank cell is ignored. A visible value is invalid if it is <0, >100, equal to any
-// other visible % Finer value, or breaks the non-decreasing sequence.
+// A blank cell is ignored. A visible value is invalid if it is <0, >100,
+// or breaks the required strictly-decreasing % Finer sequence.
 function sieveFinerStatus(rows, idx){
   const v = rows[idx]?.i;
   if(v===null || v===undefined || v==='') return {invalid:false, reasons:[]};
   const reasons=[];
-  if(v<0) reasons.push('ติดลบ');
-  if(v>100) reasons.push('เกิน 100');
-  const values = rows.map((r,i)=>({i,v:r.i})).filter(x=>x.v!==null&&x.v!==undefined&&x.v!=='');
-  if(values.some(x=>x.i!==idx && Math.abs(Number(x.v)-Number(v)) < 1e-9)) reasons.push('ค่าซ้ำ');
+  const n = Number(v);
+
+  if(n < 0) reasons.push('ติดลบ');
+  if(n > 100) reasons.push('เกิน 100');
+
+  // Required order (largest sieve -> smallest sieve):
+  // 3/4, 3/8, #4, #10, #40, #100, #200, PAN.
+  // % Finer must decrease from top to bottom.
   let prev=null, next=null;
-  for(let i=idx-1;i>=0;i--){ if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){ prev=rows[i].i; break; } }
-  for(let i=idx+1;i<rows.length;i++){ if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){ next=rows[i].i; break; } }
-  if(prev!==null && Number(v)<Number(prev)) reasons.push('ลำดับไม่เพิ่มขึ้น');
-  if(next!==null && Number(v)>Number(next)) reasons.push('ลำดับไม่เพิ่มขึ้น');
+  for(let i=idx-1;i>=0;i--){
+    if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){
+      prev = Number(rows[i].i);
+      break;
+    }
+  }
+  for(let i=idx+1;i<rows.length;i++){
+    if(rows[i].i!==null&&rows[i].i!==undefined&&rows[i].i!==''){
+      next = Number(rows[i].i);
+      break;
+    }
+  }
+
+  // Strictly descending: current < previous and current > next.
+  if(prev!==null && n >= prev) reasons.push('ต้องเรียงจากมากไปหาน้อย');
+  if(next!==null && n <= next) reasons.push('ต้องเรียงจากมากไปหาน้อย');
+
   return {invalid:reasons.length>0, reasons};
 }
 function sieveFinerCellClass(rows, idx){
@@ -1779,12 +1796,13 @@ async function exportExcel(){
           {type:'cellIs',operator:'lessThan',formulae:['0'],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
           {type:'cellIs',operator:'greaterThan',formulae:['100'],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
         ]});
-        // Duplicate / out-of-order values within the same sample.
-        // H values should be non-decreasing in the printed sieve order.
+        // % Finer must be strictly decreasing in the printed sieve order:
+        // 3/4 > 3/8 > #4 > #10 > #40 > #100 > #200 > PAN.
+        // Blank cells are ignored. A value is red when it is not lower than
+        // the previous visible value or not higher than the next visible value.
         ws.addConditionalFormatting({ref:`H${first}:H${last}`,rules:[
-          {type:'expression',formulae:[`AND(H${first}<>\"\",COUNTIF($H$${first}:$H$${last},H${first})>1)`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
-          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()>${first},H${first}<OFFSET(H${first},-1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
-          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()<${last},H${first}>OFFSET(H${first},1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
+          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()>${first},OFFSET(H${first},-1,0)<>\"\",H${first}>=OFFSET(H${first},-1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()<${last},OFFSET(H${first},1,0)<>\"\",H${first}<=OFFSET(H${first},1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
         ]});
       });
       r++;
