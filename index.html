@@ -1776,15 +1776,15 @@ async function exportExcel(){
         const first = startRow, last = startRow + rows.length - 1;
         // Basic bounds: negative / >100.
         ws.addConditionalFormatting({ref:`H${first}:H${last}`,rules:[
-          {type:'cellIs',operator:'lessThan',formula:['0'],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
-          {type:'cellIs',operator:'greaterThan',formula:['100'],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
+          {type:'cellIs',operator:'lessThan',formulae:['0'],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'cellIs',operator:'greaterThan',formulae:['100'],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
         ]});
         // Duplicate / out-of-order values within the same sample.
         // H values should be non-decreasing in the printed sieve order.
         ws.addConditionalFormatting({ref:`H${first}:H${last}`,rules:[
-          {type:'expression',formula:[`AND(H${first}<>\"\",COUNTIF($H$${first}:$H$${last},H${first})>1)`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
-          {type:'expression',formula:[`AND(H${first}<>\"\",ROW()>${first},H${first}<OFFSET(H${first},-1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
-          {type:'expression',formula:[`AND(H${first}<>\"\",ROW()<${last},H${first}>OFFSET(H${first},1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
+          {type:'expression',formulae:[`AND(H${first}<>\"\",COUNTIF($H$${first}:$H$${last},H${first})>1)`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()>${first},H${first}<OFFSET(H${first},-1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}},
+          {type:'expression',formulae:[`AND(H${first}<>\"\",ROW()<${last},H${first}>OFFSET(H${first},1,0))`],style:{font:{color:{argb:'FFFF0000'},bold:true}}}
         ]});
       });
       r++;
