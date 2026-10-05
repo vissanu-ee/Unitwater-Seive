@@ -392,6 +392,7 @@ tailwind.config = {
         <div class="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b bg-slate-50 no-print">
           <h3 class="text-sm font-bold text-[#1d2772]">SUMMARY OF TEST RESULTS (แก้ไขได้) — 1 หลุมเจาะต่อหน้า</h3>
           <div class="flex flex-wrap items-center gap-2">
+            <button id="syncSUMTop" class="text-xs px-3.5 py-2 rounded-lg bg-[#1d2772] text-white font-semibold hover:bg-[#0c1557] transition">↻ ดึงข้อมูล</button>
             <button id="addSUM" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">+ เพิ่มตัวอย่าง</button>
             <button id="delSUM" class="text-xs px-3.5 py-2 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9] transition">− ลบตัวอย่างสุดท้าย</button>
             <button id="clrSUM" class="text-xs px-3.5 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
@@ -530,84 +531,34 @@ const SAMPLE_CAPACITY_NOTE = 'Dynamic sample capacity: >32 samples supported in 
 function summarySampleKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,''); if(!n)return ''; if(/^\d+$/.test(n))return `N${Number(n)}`; const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i); return m?`N${Number(m[1])}`:`T${n}`; }
 
 let UW = [
-  {no:'SS-1',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'M-63',a:19.30,b:109.76,c:84.14},
-  {no:'2',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ก-57',a:17.33,b:128.57,c:110.14},
-  {no:'3',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'อ-15',a:18.84,b:87.61, c:77.08},
-  {no:'4',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ฬ-48',a:19.04,b:75.20, c:63.87},
-  {no:'5',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'ด-38',a:18.60,b:77.57, c:63.45},
-  {no:'6',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'จ-77',a:17.90,b:74.64, c:68.94},
-  {no:'7',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'H-93',a:19.40,b:83.44, c:76.41},
-  {no:'8',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'อ-1', a:16.86,b:94.79, c:77.59},
-  {no:'9',   depth:'',D:'',H:'',soilMold:'',mold:'',cont:'O-68',a:17.87,b:97.52, c:80.16},
-  {no:'10',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'V-7',  a:11.67,b:'',    c:91.89},
-  {no:'11',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'V-30', a:12.57,b:'',    c:80.79},
-  {no:'12',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'B-47', a:17.26,b:'',    c:83.88},
-  {no:'13',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'C-4',  a:20.05,b:'',    c:108.21},
-  {no:'14',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'E-20', a:17.44,b:'',    c:127.86},
-  {no:'15',  depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',     a:'',   b:'',    c:''}
+  {no:'',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}
 ];
 
 let SV = [
-  {no:'1',dish:'M-63',depth:'',a:null,b:null,c:null,f:{'#10':19.67,'#40':22.26,'#100':31.24,'#200':40.43}},
-  {no:'2',dish:'ก-57',depth:'',a:null,b:null,c:null,f:{'#10':18.91,'#40':35.90,'#100':91.61,'#200':97.01}},
-  {no:'3',dish:'อ-15',depth:'',a:null,b:null,c:null,f:{'#10':18.99,'#40':31.88,'#100':64.07,'#200':65.27}},
-  {no:'4',dish:'ฬ-48',depth:'',a:null,b:null,c:null,f:{'#10':19.29,'#40':24.96,'#100':51.30,'#200':53.01}},
-  {no:'5',dish:'ด-38',depth:'',a:null,b:null,c:null,f:{'#10':19.73,'#40':25.45,'#100':52.23,'#200':54.66}},
-  {no:'6',dish:'จ-77',depth:'',a:null,b:null,c:null,f:{'#4':23.26,'#10':33.12,'#40':51.49,'#100':62.88,'#200':64.09}},
-  {no:'7',dish:'B-10',depth:'',a:null,b:null,c:null,f:{'#40':32.86,'#100':75.77,'#200':77.50,'PAN':1.24}},
-  {no:'8',dish:'S-35',depth:'',a:null,b:null,c:null,f:{'#10':19.81,'#40':20.32,'#100':26.64,'#200':28.16}},
-  {no:'9',dish:'C-54',depth:'',a:null,b:null,c:null,f:{'#10':15.78,'#40':42.09,'#100':79.09,'#200':81.21}},
-  {no:'10',dish:'V-7',depth:'',a:null,b:null,c:null,f:{'#10':11.84,'#40':28.79,'#100':64.56,'#200':66.26}},
-  {no:'11',dish:'V-30',depth:'',a:null,b:null,c:null,f:{'#10':13.36,'#40':43.68,'#100':70.91,'#200':72.21}},
-  {no:'12',dish:'B-47',depth:'',a:null,b:null,c:null,f:{'#10':18.15,'#40':43.17,'#100':70.95,'#200':73.05}},
-  {no:'13',dish:'C-4',depth:'',a:null,b:null,c:null,f:{'#4':22.03,'#10':24.12,'#40':54.66,'#100':87.62,'#200':90.03}},
-  {no:'14',dish:'E-20',depth:'',a:null,b:null,c:null,f:{'#10':19.01,'#40':69.77,'#100':107.36,'#200':110.40}},
-  {no:'15',dish:'',depth:'',a:null,b:null,c:null,f:{}}
+  {no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}
 ];
 
-// Atterberg's Limits — 1 borehole per page, N sample columns (โครงสร้าง/สูตรอ้างอิงจาก Data - Atterberg's Limits.xlsx)
+// Atterberg's Limits — start with one completely blank sample row.
 let ATT = [
-  {no:'SS-2', depth:'', testType:'', canNo:'', blows:'24', a:495, b:1870, c:1480, adjWater:3},
-  {no:'SS-4', depth:'', testType:'', canNo:'', blows:'20', a:435, b:1488, c:1263, adjWater:3},
-  {no:'SS-6', depth:'', testType:'', canNo:'', blows:'20', a:435, b:1541, c:1303, adjWater:3},
-  {no:'SS-2', depth:'', testType:'', canNo:'', blows:'21', a:453, b:947,  c:805,  adjWater:3},
-  {no:'SS-4', depth:'', testType:'', canNo:'', blows:'23', a:439, b:1672, c:1398, adjWater:3},
-  {no:'SS-6', depth:'', testType:'', canNo:'', blows:'21', a:456, b:1597, c:1378, adjWater:3}
+  {no:'', depth:'', testType:'', canNo:'', blows:'', a:'', b:'', c:'', adjWater:''}
 ];
 
-// Unconfined Compression Test — คำนวณหน้าละ 1 หลุมเจาะ/ตัวอย่างเท่านั้น (โครงสร้าง/สูตรอ้างอิงจาก Data - Unconfined Compression Test.xlsx)
+// Unconfined Compression Test — completely blank initial form.
 const UCT_R = [0,10,20,30,40,50,60,70,80,90,100,120,140,160,180,200,220,240,260,280,300,320,340,360,380,400,420,440,460,480,500,520,540,560];
 function newUCT(){
   return {
-    no:'', depth:'', soilType:'', strainRate:'', K:0.0653,
-    H:'', D:'', soilSplitFormer:'-', splitFormer:'-',
+    no:'', depth:'', soilType:'', strainRate:'', K:'',
+    H:'', D:'', soilSplitFormer:'', splitFormer:'',
     cont:'', b:'', c:'', a:'',
-    Q: UCT_R.map(()=>'')
+    Q: UCT_R.map(()=> '')
   };
 }
-let UCT = [{
-  no:'ST-1', depth:'3.00-3.45', soilType:'CLAY', strainRate:0.5, K:0.0653,
-  H:7.613, D:3.759, soilSplitFormer:'-', splitFormer:'-',
-  cont:'C-72', b:179.49, c:136.89, a:18.88,
-  Q:[0,11,14.5,16,19,20,22,23,25,26,27,30,33,35,38,40,42,44,48,49,50,52,58,58,'','','','','','','','','','']
-}];
+let UCT = [newUCT()];
 let uctIdx = 0;
 
-// Summary of Test Results — preserve the original sample data from
-// Html_V13_Excel_Export_ConditionalFix.html.
+// Summary of Test Results — completely blank initial form.
 const DEFAULT_SUMMARY = [
-  {no:'SS-1', from:1.5,  to:1.95, wn:18.0, ll:26.3, pl:19.4, g4:86.1, g10:79.7, g40:69.0, g100:63.9, g200:62.6, uscs:'CL-ML', pp:'', fv:'', qu:'', gt:'', sptN:26},
-  {no:'ST-1', from:3,    to:3.5,  wn:45.6, ll:55.3, pl:26.0, g4:100,  g10:99.9, g40:99.1, g100:98.1, g200:97.3, uscs:'CH',    pp:'', fv:'', qu:7.78, gt:1.85, sptN:''},
-  {no:'ST-2', from:4.5,  to:5,    wn:56.3, ll:52.5, pl:25.1, g4:99.9, g10:99.9, g40:99.5, g100:98.5, g200:97.7, uscs:'CH',    pp:'', fv:'', qu:4.78, gt:1.62, sptN:''},
-  {no:'ST-3', from:6,    to:6.5,  wn:89.3, ll:55.7, pl:26.3, g4:91.2, g10:79.6, g40:73.4, g100:70.7, g200:70.0, uscs:'CH',    pp:'', fv:'', qu:2.51, gt:1.53, sptN:''},
-  {no:'ST-4', from:7.5,  to:8,    wn:78.9, ll:53.0, pl:26.0, g4:100,  g10:99.7, g40:99.0, g100:97.7, g200:95.9, uscs:'CH',    pp:'', fv:'', qu:3.85, gt:1.56, sptN:''},
-  {no:'SS-2', from:9,    to:9.45, wn:32.6, ll:64.8, pl:30.2, g4:'',   g10:'',   g40:99.97,g100:99.92,g200:99.65,uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:18},
-  {no:'SS-3', from:10.5, to:10.95,wn:23.5, ll:61.5, pl:29.7, g4:99.3, g10:98.8, g40:98.3, g100:97.6, g200:97.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:25},
-  {no:'SS-4', from:12,   to:12.45,wn:20.4, ll:57.5, pl:27.1, g4:94.5, g10:92.0, g40:88.7, g100:87.7, g200:87.1, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:29},
-  {no:'SS-5', from:13.5, to:13.95,wn:21.2, ll:60.8, pl:29.0, g4:99.9, g10:99.8, g40:99.4, g100:99.1, g200:98.9, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:42},
-  {no:'SS-6', from:15,   to:15.45,wn:20.9, ll:60.1, pl:28.8, g4:92.5, g10:92.0, g40:91.1, g100:90.4, g200:89.6, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:57},
-  {no:'SS-7', from:16.5, to:16.95,wn:21.7, ll:58.8, pl:29.1, g4:99.7, g10:98.2, g40:96.5, g100:96.1, g200:95.7, uscs:'CH',    pp:'', fv:'', qu:'', gt:2.06, sptN:61},
-  {no:'SS-8', from:18,   to:18.45,wn:21.5, ll:55.4, pl:26.9, g4:99.2, g10:98.5, g40:97.3, g100:96.8, g200:96.2, uscs:'CH',    pp:'', fv:'', qu:'', gt:'', sptN:69}
+  {no:'', from:'', to:'', wn:'', ll:'', pl:'', g4:'', g10:'', g40:'', g100:'', g200:'', uscs:'', pp:'', fv:'', qu:'', gt:'', sptN:''}
 ];
 let SUM = DEFAULT_SUMMARY.map(s=>({...s}));
 
@@ -624,7 +575,7 @@ function summaryHasData(arr){
    ===================================================================== */
 function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:20,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:21,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -641,7 +592,7 @@ function loadAppState(){
     const raw=localStorage.getItem(appStateKey());
     if(!raw) return false;
     const st=JSON.parse(raw);
-    if(!st || Number(st.version)!==20) return false;
+    if(!st || Number(st.version)!==21) return false;
     _loadingState=true;
     if(st.project) Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});
     // Only restore a module when the saved module actually contains data.
@@ -849,27 +800,56 @@ function renderSumStats(){
 }
 
 function syncSummaryFromModules(){
-  // Summary uses its existing sample list as the source of truth.
-  // Updating from modules must never add/remove/reorder Summary samples.
-  SUM = (Array.isArray(SUM) ? SUM : []).map(s => ({...s}));
+  // Summary is populated only from real source-module data.
+  // A sample number by itself is not enough; at least one other field must contain data.
+  const sourceMap = new Map();
+  const addSource = (arr, kind) => {
+    (arr || []).forEach(x => {
+      if(!x || !summarySampleKey(x.no)) return;
+      let hasData = false;
+      const vals = Object.entries(x).filter(([k]) => k !== 'no');
+      if(kind === 'SV') {
+        hasData = vals.some(([k,v]) => k === 'f' ? Object.values(v || {}).some(z => num(z)!==null) : v!=='' && v!==null && v!==undefined);
+      } else if(kind === 'UCT') {
+        hasData = vals.some(([k,v]) => k === 'Q' ? (Array.isArray(v) && v.some(z=>num(z)!==null)) : v!=='' && v!==null && v!==undefined);
+      } else {
+        hasData = vals.some(([,v]) => v!=='' && v!==null && v!==undefined);
+      }
+      if(hasData) sourceMap.set(summarySampleKey(x.no), String(x.no).trim());
+    });
+  };
+  addSource(UW,'UW');
+  addSource(SV,'SV');
+  addSource(ATT,'ATT');
+  addSource(UCT,'UCT');
+
+  const keys = [...sourceMap.keys()].sort((a,b)=>{
+    const an=a.startsWith('N')?Number(a.slice(1)):999999;
+    const bn=b.startsWith('N')?Number(b.slice(1)):999999;
+    return an-bn || a.localeCompare(b);
+  });
+
+  // If no source data exists, keep one completely blank Summary row.
+  SUM = keys.length ? keys.map(k=>({no:sourceMap.get(k),from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''})) : cloneDefaultSummary();
 
   SUM.forEach(s=>{
     const k=summarySampleKey(s.no);
     if(!k) return;
-
     const u=UW.find(x=>summarySampleKey(x?.no)===k);
     if(u){
       const c=calcUW(u);
       if(c.w!==null && c.w!==undefined) s.wn=c.w;
+      if(u.depth!=='' && u.depth!==null && u.depth!==undefined) {
+        const d=String(u.depth).trim();
+        if(d.includes('-')) { const [from,to]=d.split('-').map(v=>v.trim()); s.from=from; s.to=to; }
+      }
     }
-
     const at=ATT.find(x=>summarySampleKey(x?.no)===k);
     if(at){
       const c=calcAtterberg(at);
       if(c.LL!==null && c.LL!==undefined) s.ll=c.LL;
       if(c.PL!==null && c.PL!==undefined) s.pl=c.PL;
     }
-
     const sv=SV.find(x=>summarySampleKey(x?.no)===k);
     if(sv){
       const rows=calcSieve(sv).rows;
@@ -879,12 +859,15 @@ function syncSummaryFromModules(){
         if(r && r.i!==null && r.i!==undefined && r.i!=='') s[key]=r.i;
       });
     }
-
     const t=UCT.find(x=>summarySampleKey(x?.no)===k);
     if(t){
       const c=calcUCTSummary(t);
       if(c.qu!==null && c.qu!==undefined) s.qu=c.qu;
       if(c.gt!==null && c.gt!==undefined) s.gt=c.gt;
+      if(t.depth!=='' && t.depth!==null && t.depth!==undefined) {
+        const d=String(t.depth).trim();
+        if(d.includes('-')) { const [from,to]=d.split('-').map(v=>v.trim()); s.from=from; s.to=to; }
+      }
     }
   });
 
@@ -2721,10 +2704,12 @@ function bootApp(){
       if(!r.isConfirmed) return;
       SUM = [{no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}];
       renderSUM();
-      toast('ล้างข้อมูล Summary แล้ว');
+      scheduleSaveState();
+      toast('ล้างข้อมูล Summary แล้ว — กด “ดึงข้อมูล” เพื่อดึงค่ากลับจากข้อมูลต้นทาง');
     });
   };
   document.getElementById('syncSUM').onclick = syncSummaryFromModules;
+  document.getElementById('syncSUMTop').onclick = syncSummaryFromModules;
 
   bindDrop('dzUW','fileUW','prevUW','uw');
   bindDrop('dzSV','fileSV','prevSV','sv');
@@ -2736,9 +2721,7 @@ function bootApp(){
   document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
 
   loadAppState();
-  // Keep the original Html_V13 Summary sample data on startup.
-  // Cross-module synchronization remains available through the Summary button only;
-  // it must never silently overwrite the source sample dataset during startup.
+  // Start with a completely blank Summary unless the current user has saved real Summary data.
   if(!summaryHasData(SUM)) SUM=cloneDefaultSummary();
   renderSUM();
 
