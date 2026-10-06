@@ -430,7 +430,7 @@ function userKey(prefix){return `${prefix}::${ACTIVE_USER}`;}
 function userGemKey(){return userKey('gemKeyV1');}
 function userGemModeKey(){return userKey('gemModeV1');}
 function userUsageKey(){return userKey('gemUsageV1');}
-function userStateKey(){return userKey('tenConsultantsSoilLabStateV30');}
+function userStateKey(){return userKey('tenConsultantsSoilLabStateV31');}
 function getSavedUser(){return normUser(localStorage.getItem(AUTH_SESSION_KEY)||'');}
 
 const CFG = {
@@ -578,7 +578,7 @@ function summaryHasData(arr){
    ===================================================================== */
 function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:30,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:31,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -2674,9 +2674,9 @@ function bootApp(){
   document.getElementById('filterSV').addEventListener('input', renderSieve);
   document.getElementById('filterSieve').addEventListener('change', renderSieve);
   document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false);
-  document.getElementById('addUW').onclick = ()=>{ UW.push({no:String(UW.length+1),depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
+  document.getElementById('addUW').onclick = ()=>{ UW.push({no:'',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
   document.getElementById('delUW').onclick = ()=>{ if(UW.length>1){UW.pop(); renderUW();} };
-  document.getElementById('addSV').onclick = ()=>{ SV.push({no:String(SV.length+1),dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
+  document.getElementById('addSV').onclick = ()=>{ SV.push({no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
   document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
   document.getElementById('clrUW').onclick = clearAllUW;
   document.getElementById('clrSV').onclick = clearAllSV;
