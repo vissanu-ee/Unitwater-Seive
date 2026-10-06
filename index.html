@@ -430,7 +430,7 @@ function userKey(prefix){return `${prefix}::${ACTIVE_USER}`;}
 function userGemKey(){return userKey('gemKeyV1');}
 function userGemModeKey(){return userKey('gemModeV1');}
 function userUsageKey(){return userKey('gemUsageV1');}
-function userStateKey(){return userKey('tenConsultantsSoilLabStateV29');}
+function userStateKey(){return userKey('tenConsultantsSoilLabStateV30');}
 function getSavedUser(){return normUser(localStorage.getItem(AUTH_SESSION_KEY)||'');}
 
 const CFG = {
@@ -528,7 +528,10 @@ const show = v => (v===null||v===undefined) ? '' : v;
 // Sample collections are intentionally dynamic. There is no 32-sample cap.
 // Excel supports far more than 32 columns/rows; the UI arrays can grow as needed.
 const SAMPLE_CAPACITY_NOTE = 'Dynamic sample capacity: >32 samples supported in every module.';
-function summarySampleKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,''); if(!n)return ''; if(/^\d+$/.test(n))return `N${Number(n)}`; const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i); return m?`N${Number(m[1])}`:`T${n}`; }
+function sampleNumberKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-'); if(!n)return null; if(/^\d+(?:\D*)$/.test(n)) return Number((n.match(/^\d+/)||[])[0]); const m=n.match(/(?:SS|SAMPLE|NO)?[^0-9]*(\d+)/i); return m?Number(m[1]):null; }
+function sampleSortNumber(v){ const n=sampleNumberKey(v); return n===null?Infinity:n; }
+function sortSieveSamples(){ if(!Array.isArray(SV)) return; SV.sort((a,b)=>sampleSortNumber(a?.no)-sampleSortNumber(b?.no) || String(a?.no??'').localeCompare(String(b?.no??''))); }
+function summarySampleKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,''); if(!n)return ''; const sn=sampleNumberKey(n); if(sn!==null)return `N${sn}`; const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)/i); return m?`N${Number(m[1])}`:`T${n}`; }
 
 let UW = [
   {no:'',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}
@@ -575,7 +578,7 @@ function summaryHasData(arr){
    ===================================================================== */
 function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:29,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:30,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -592,7 +595,7 @@ function loadAppState(){
     const raw=localStorage.getItem(appStateKey());
     if(!raw) return false;
     const st=JSON.parse(raw);
-    if(!st || Number(st.version)!==29) return false;
+    if(!st || ![29,30].includes(Number(st.version))) return false;
     _loadingState=true;
     if(st.project) Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});
     // Only restore a module when the saved module actually contains data.
@@ -600,6 +603,7 @@ function loadAppState(){
     // shipped in Html_V13_Excel_Export_ConditionalFix_v29.html.
     if(moduleHasData(st.UW,'UW')) UW=st.UW;
     if(moduleHasData(st.SV,'SV')) SV=st.SV;
+    sortSieveSamples();
     if(moduleHasData(st.ATT,'ATT')) ATT=st.ATT;
     if(moduleHasData(st.UCT,'UCT')) UCT=st.UCT;
     if(Array.isArray(st.SUM)&&summaryHasData(st.SUM)) SUM=st.SUM; else SUM=cloneDefaultSummary();
@@ -983,7 +987,8 @@ function renderSieve(){
   const sf = document.getElementById('filterSieve').value;
   const box = document.getElementById('sieveCards');
 
-  box.innerHTML = SV.map((s,idx)=>{
+  const displaySV = SV.map((s,idx)=>({s,idx})).sort((A,B)=>(sampleSortNumber(A.s.no)-sampleSortNumber(B.s.no) || String(A.s.no??'').localeCompare(String(B.s.no??''))));
+  box.innerHTML = displaySV.map(({s,idx})=>{
     if(q && !(String(s.no).toLowerCase().includes(q)||String(s.dish).toLowerCase().includes(q))) return '';
     const {d,e,rows} = calcSieve(s);
     const body = rows.filter(r=> !sf || r.sieve===sf).map((r)=>{
@@ -2014,9 +2019,8 @@ CRITICAL:
     const dishKey=v=>norm(v).replace(/\s+/g,'');
     const sampleMatchKey=v=>{
       const n=sampleKey(v);
-      if(/^\d+$/.test(n)) return `N${Number(n)}`;
-      const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i);
-      return m?`N${Number(m[1])}`:`T${n}`;
+      const sn=sampleNumberKey(n);
+      return sn!==null ? `N${sn}` : `T${n}`;
     };
     const mergedByKey=new Map();
 
@@ -2034,14 +2038,13 @@ CRITICAL:
 
     const ocrSV=[...mergedByKey.values()];
     ocrSV.sort((a,b)=>{
-      const ak=sampleMatchKey(a.no), bk=sampleMatchKey(b.no);
-      const an=ak.startsWith('N')?Number(ak.slice(1)):9999;
-      const bn=bk.startsWith('N')?Number(bk.slice(1)):9999;
-      return an-bn || String(a.no).localeCompare(String(b.no));
+      const an=sampleSortNumber(a.no), bn=sampleSortNumber(b.no);
+      return an-bn || String(a.no??'').localeCompare(String(b.no??''));
     });
 
     // Replace, rather than merge with old data, so stale OCR cards cannot survive.
     SV=ocrSV.length ? ocrSV : [{no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}];
+    sortSieveSamples();
     syncSieveFromUW(true);
     renderSieve(); buildChart(); scheduleSaveState();
     Swal.close();
