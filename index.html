@@ -104,21 +104,21 @@ tailwind.config = {
     <h2 class="text-sm font-bold text-[#1d2772] mb-3">ข้อมูลโครงการ (Project Information)</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
       <label class="block"><span class="text-xs text-slate-500">PROJECT</span>
-        <input id="pjProject" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="โครงการ รามคำแหง"></label>
+        <input id="pjProject" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
       <label class="block lg:col-span-2"><span class="text-xs text-slate-500">LOCATION</span>
-        <input id="pjLocation" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="แขวงหัวหมาก เขตบางกะปิ กรุงเทพมหานคร"></label>
+        <input id="pjLocation" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
       <label class="block"><span class="text-xs text-slate-500">JOB NO.</span>
         <input id="pjJob" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
       <label class="block"><span class="text-xs text-slate-500">BORING NO.</span>
-        <input id="pjBoring" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="BH-1"></label>
+        <input id="pjBoring" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
       <label class="block"><span class="text-xs text-slate-500">TESTED BY</span>
         <input id="pjTested" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none"></label>
       <label class="block"><span class="text-xs text-slate-500">CHECK BY</span>
         <input id="pjCheck" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none"></label>
       <label class="block"><span class="text-xs text-slate-500">DATE</span>
-        <input id="pjDate" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="14/8/19"></label>
+        <input id="pjDate" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
       <label class="block"><span class="text-xs text-slate-500">TOTAL DEPTH</span>
-        <input id="pjTotalDepth" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value="18.45 M."></label>
+        <input id="pjTotalDepth" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#9aa1d0] outline-none" value=""></label>
     </div>
   </div>
 </section>
@@ -430,7 +430,7 @@ function userKey(prefix){return `${prefix}::${ACTIVE_USER}`;}
 function userGemKey(){return userKey('gemKeyV1');}
 function userGemModeKey(){return userKey('gemModeV1');}
 function userUsageKey(){return userKey('gemUsageV1');}
-function userStateKey(){return userKey('tenConsultantsSoilLabStateV20');}
+function userStateKey(){return userKey('tenConsultantsSoilLabStateV29');}
 function getSavedUser(){return normUser(localStorage.getItem(AUTH_SESSION_KEY)||'');}
 
 const CFG = {
@@ -575,7 +575,7 @@ function summaryHasData(arr){
    ===================================================================== */
 function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:21,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:29,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -592,12 +592,12 @@ function loadAppState(){
     const raw=localStorage.getItem(appStateKey());
     if(!raw) return false;
     const st=JSON.parse(raw);
-    if(!st || Number(st.version)!==21) return false;
+    if(!st || Number(st.version)!==29) return false;
     _loadingState=true;
     if(st.project) Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});
     // Only restore a module when the saved module actually contains data.
     // A stale/empty localStorage snapshot must never erase the sample data
-    // shipped in Html_V13_Excel_Export_ConditionalFix.html.
+    // shipped in Html_V13_Excel_Export_ConditionalFix_v29.html.
     if(moduleHasData(st.UW,'UW')) UW=st.UW;
     if(moduleHasData(st.SV,'SV')) SV=st.SV;
     if(moduleHasData(st.ATT,'ATT')) ATT=st.ATT;
@@ -731,10 +731,12 @@ function calcAtterberg(s){
   const a=num(s.a), b=num(s.b), c=num(s.c), N=num(s.blows), adjW=num(s.adjWater);
   const water    = (b!==null&&c!==null) ? r2(b-c) : null;
   const drySoil  = (c!==null&&a!==null) ? r2(c-a) : null;
-  const wc       = (water!==null&&drySoil) ? r2(water/drySoil*100) : null;
+  const wc       = (water!==null&&drySoil!==null&&drySoil!==0) ? r2(water/drySoil*100) : null;
   const factor   = (N!==null) ? r3(Math.pow(N/25,0.12)) : null;
   const LL       = (wc!==null&&factor!==null) ? r2(wc*factor) : null;
-  const PI       = (LL!==null&&adjW!==null) ? r2(0.73*(LL-20)+adjW) : null;
+  // ADJ. WATER is optional; blank means 0.
+  const adj      = adjW===null ? 0 : adjW;
+  const PI       = (LL!==null) ? r2(0.73*(LL-20)+adj) : null;
   const PL       = (LL!==null&&PI!==null) ? r2(LL-PI) : null;
   return {water,drySoil,wc,factor,LL,PI,PL};
 }
@@ -1766,13 +1768,19 @@ const SV_CARD_SCHEMA = {
   }, required:["no","dish","values"]}
 };
 const ATT_SCHEMA = {
-  type:"ARRAY", items:{ type:"OBJECT", properties:{
-    no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
-    testType:{type:"STRING", nullable:true}, canNo:{type:"STRING", nullable:true},
-    blows:{type:"STRING", description:"Number or 'NP'", nullable:true},
-    a:{type:"NUMBER", nullable:true}, b:{type:"NUMBER", nullable:true}, c:{type:"NUMBER", nullable:true},
+  type:"ARRAY",
+  description:"Return exactly 12 objects, one for each printed sample column SS-1 through SS-12, in left-to-right order. Keep blank columns as null/empty values; do not omit a sample column.",
+  items:{ type:"OBJECT", properties:{
+    no:{type:"STRING", nullable:true, description:"Sample No. exactly as printed, e.g. SS-1"},
+    depth:{type:"STRING", nullable:true},
+    testType:{type:"STRING", nullable:true},
+    canNo:{type:"STRING", nullable:true, description:"Can No. exactly as handwritten"},
+    blows:{type:"STRING", nullable:true, description:"Number of Blows exactly as printed/handwritten, including NP"},
+    a:{type:"NUMBER", nullable:true, description:"Wt. Can (gm.)"},
+    b:{type:"NUMBER", nullable:true, description:"Can+Wet soil (gm.)"},
+    c:{type:"NUMBER", nullable:true, description:"Can+Dry soil (gm.)"},
     adjWater:{type:"NUMBER", nullable:true}
-  }}
+  }, required:["no","blows","canNo","a","b","c"]}
 };
 const UCT_SCHEMA = {
   type:"OBJECT", properties:{
@@ -1901,34 +1909,32 @@ async function cropImageRectData(dataUrl, x, y, cropW, cropH, maxSide=1400){
 async function runOcrSV(){
   if(!IMG.sv.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS • OCR v12', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:'SIEVE ANALYSIS • OCR v13', allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    // OCR v12: one Sample Card per Gemini request, using geometry calibrated to the supplied 3-column x 2-row scan.
-    // The crop includes the complete sieve table down through #200/PAN so bottom rows are not lost.
-    // Do not discard values that appear out of order; preserve all raw OCR readings and let % Finer validation flag anomalies.
-    // A dedicated single-card crop plus a positional 8-value array removes that ambiguity.
+    // OCR v13: read each printed card independently, then REPLACE the current
+    // Sieve dataset with only the cards found in the uploaded images. This is
+    // important: stale cards from a previous OCR run must never remain visible.
     const cardPrompt = `Read ONLY the single SIEVE ANALYSIS SAMPLE CARD in this image.
-There is exactly ONE sample card in the image. Do not read any other card, project header, or nearby text.
-Return ONE JSON array with ONE object only.
+There is exactly ONE printed sample card in the crop. Return ONE JSON array with ONE object only.
 
 Fields:
-- no = Sample No. exactly as printed.
-- dish = Dish No. exactly as printed.
-- a = WT. OF DISH (gm.) from this card.
+- no = Sample No. exactly as printed on this card.
+- dish = Dish No. exactly as printed on this card.
+- a = WT. OF DISH (gm.) from this card, if visible/readable; otherwise null.
 - b = WT. OF WET SAMPLE + DISH (gm.) if that row/field is present and readable; otherwise null.
-- c = DRY SAMPLE + DISH (gm.) from this card.
-- values = EXACTLY 8 numbers/nulls in this fixed printed row order:
+- c = DRY SAMPLE + DISH (gm.) from this card, if visible/readable; otherwise null.
+- values = EXACTLY 8 values in this fixed printed row order:
   [3/4, 3/8, #4, #10, #40, #100, #200, PAN]
 
-CRITICAL ROW-MAPPING RULES:
-1. Read the handwritten number from the Retained (gm) column of EACH printed sieve row.
-2. Keep the value at the SAME ROW. Never shift a value up or down.
-3. #200 is the SECOND-LAST row; PAN is the LAST row. A handwritten #200 value MUST go into values[6], never values[7].
-4. 3/4 and 3/8 may be blank. Blank/unreadable = null.
-5. Read ALL handwritten rows from #4 through PAN. Do not stop after the first, second, or third handwritten number.
-6. Decimals are important. Preserve them exactly as written (examples: 16.38, 17.49, 30.93, 32.44).
-7. Do NOT calculate cumulative retained, % retained, or % finer.
-8. Return only JSON. No markdown, no explanation.`;
+CRITICAL:
+1. Read the handwritten number from the Retained (gm) column of EACH sieve row and keep it on the SAME row.
+2. #200 is the SECOND-LAST sieve row and PAN is the LAST row. Never move a #200 value into PAN.
+3. Read ALL visible handwritten retained values from #4 through #200/PAN. Do not stop after the first few values.
+4. Blank/unreadable = null. Do not invent or calculate values.
+5. Preserve decimal values exactly as written.
+6. Do NOT calculate cumulative retained, % retained, or % finer.
+7. Do not read a nearby card. Return only the card contained in this crop.
+8. If the sample number is faint, inspect the card header carefully; do not substitute a different sample number.`;
 
     const allArr=[];
     const usageList=[];
@@ -1944,56 +1950,41 @@ CRITICAL ROW-MAPPING RULES:
         im.src=src;
       });
 
-      // This form is a stable 3-column × 2-row layout. The normalized boxes below
-      // intentionally crop tightly around each card so the handwritten Retained column
-      // gets much more pixels than when the entire row is sent.
-      // The source scan is a 3-column × 2-row layout. Use wider boxes so the
-      // entire right-hand card is included; v9's narrow boxes could cut off a card.
+      // Supplied Sieve sheets use a stable 3-column x 2-row card layout.
       const cols=[
-        {name:'ซ้าย', x:0.055, w:0.278},
-        {name:'กลาง',x:0.318, w:0.278},
-        {name:'ขวา', x:0.585, w:0.278}
+        {name:'ซ้าย', x:0.050, w:0.285},
+        {name:'กลาง',x:0.315, w:0.285},
+        {name:'ขวา', x:0.580, w:0.285}
       ];
       const rows=[
-        {name:'บน', y:0.090, h:0.470},
-        {name:'ล่าง',y:0.545, h:0.425}
+        {name:'บน', y:0.085, h:0.475},
+        {name:'ล่าง',y:0.535, h:0.445}
       ];
 
       for(const row of rows){
         for(const col of cols){
           cardCount++;
-          if(Swal.isVisible?.()) Swal.update({text:`SIEVE ANALYSIS • OCR v12 • อ่าน Sample Card ${cardCount} (${page+1}/${IMG.sv.length} หน้า, แถว${row.name}, ${col.name})`});
-          const crop=await cropImageRectData(
-            src,
-            probe.w*col.x,
-            probe.h*row.y,
-            probe.w*col.w,
-            probe.h*row.h,
-            1400
-          );
+          if(Swal.isVisible?.()) Swal.update({text:`SIEVE ANALYSIS • OCR v13 • อ่าน Sample Card ${cardCount} (${page+1}/${IMG.sv.length} หน้า, แถว${row.name}, ${col.name})`});
+          const crop=await cropImageRectData(src,
+            probe.w*col.x, probe.h*row.y,
+            probe.w*col.w, probe.h*row.h, 1550);
 
-          // Small spacing prevents a burst of requests while keeping the whole OCR run fast.
           if(cardCount>1) await new Promise(r=>setTimeout(r,4200));
 
-          const arr=await callGemini(
-            [{data:crop}],
-            cardPrompt,
-            900,
-            SV_CARD_SCHEMA,
-            'Sieve Analysis',
-            [CFG.GEM_PRIMARY, CFG.GEM_STABLE_FALLBACK]
-          );
+          let arr=await callGemini([{data:crop}],cardPrompt,900,SV_CARD_SCHEMA,
+            'Sieve Analysis',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK]);
           let usableArr=Array.isArray(arr)?arr:[];
-          const cardOk = usableArr.some(it=>it && it.no && it.dish && Array.isArray(it.values));
-          // Retry once when the model missed the card header or returned no usable
-          // positional values. This is especially important for the right-hand cards.
+          let cardOk=usableArr.some(it=>it && String(it.no??'').trim() && String(it.dish??'').trim() && Array.isArray(it.values));
+
           if(!cardOk){
-            const retryX=Math.max(0, probe.w*(col.x-0.018));
-            const retryY=Math.max(0, probe.h*(row.y-0.025));
-            const retryW=Math.min(probe.w, probe.w*(col.w+0.040));
-            const retryH=Math.min(probe.h, probe.h*(row.h+0.050));
-            const retryCrop=await cropImageRectData(src,retryX,retryY,retryW,retryH,1550);
-            const retry=await callGemini([{data:retryCrop}],cardPrompt+'\nRetry note: identify this exact card even if some handwritten values are faint; preserve all 8 row positions. Never return an object for a different card.',900,SV_CARD_SCHEMA,'Sieve Analysis',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK]);
+            const retryX=Math.max(0,probe.w*(col.x-0.020));
+            const retryY=Math.max(0,probe.h*(row.y-0.020));
+            const retryW=Math.min(probe.w,probe.w*(col.w+0.045));
+            const retryH=Math.min(probe.h,probe.h*(row.h+0.050));
+            const retryCrop=await cropImageRectData(src,retryX,retryY,retryW,retryH,1700);
+            const retry=await callGemini([{data:retryCrop}],
+              cardPrompt+'\nRetry: this crop is still the SAME card. Re-read the header and all retained-weight rows carefully.',
+              900,SV_CARD_SCHEMA,'Sieve Analysis',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK]);
             usableArr=Array.isArray(retry)?retry:[];
           }
           if(!usableArr.length) continue;
@@ -2004,12 +1995,13 @@ CRITICAL ROW-MAPPING RULES:
             const f={};
             SIEVES.forEach((sv,i)=>{
               const v=vals[i];
-              if(v!==null && v!==undefined && v!=='') f[sv.name]=v;
+              if(v!==null&&v!==undefined&&v!=='') f[sv.name]=v;
             });
-            if(item.no || item.dish) allArr.push({no:item.no||'',dish:item.dish||'',a:item.a??null,b:item.b??null,c:item.c??null,f});
+            if(String(item.no??'').trim() || String(item.dish??'').trim()){
+              allArr.push({no:item.no||'',dish:item.dish||'',a:item.a??null,b:item.b??null,c:item.c??null,f});
+            }
           });
-
-          if(arr.__gemUsage) usageList.push({...arr.__gemUsage,page:page+1,row:row.name,col:col.name});
+          if(arr?.__gemUsage) usageList.push({...arr.__gemUsage,page:page+1,row:row.name,col:col.name});
         }
       }
     }
@@ -2020,89 +2012,55 @@ CRITICAL ROW-MAPPING RULES:
     const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
     const sampleKey=v=>norm(v).replace(/\s+/g,'');
     const dishKey=v=>norm(v).replace(/\s+/g,'');
-    // Treat numeric labels and SS-prefixed labels as the same sample where applicable:
-    // e.g. 1 <-> SS-1, 2 <-> SS-2. This avoids duplicate sample cards.
     const sampleMatchKey=v=>{
       const n=sampleKey(v);
       if(/^\d+$/.test(n)) return `N${Number(n)}`;
       const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/i);
       return m?`N${Number(m[1])}`:`T${n}`;
     };
-    const expectedSampleNumbers=Array.from({length:15},(_,i)=>String(i+1));
     const mergedByKey=new Map();
 
     allArr.forEach(item=>{
-      if(!item || typeof item!=='object') return;
       const rawF=(item.f&&typeof item.f==='object'&&!Array.isArray(item.f))?item.f:{};
       const key=item.no ? `no:${sampleMatchKey(item.no)}` : (item.dish ? `dish:${dishKey(item.dish)}` : '');
       if(!key) return;
-      const prev=mergedByKey.get(key) || {no:item.no||'',dish:item.dish||'',f:{}};
+      const prev=mergedByKey.get(key)||{no:item.no||'',dish:item.dish||'',depth:'',a:null,b:null,c:null,f:{}};
       if(item.no) prev.no=item.no;
       if(item.dish) prev.dish=item.dish;
-      sieveKeys.forEach(k=>{
-        const v=rawF[k];
-        if(v!==null && v!==undefined && v!=='') prev.f[k]=v;
-      });
+      ['a','b','c'].forEach(k=>{if(item[k]!==null&&item[k]!==undefined&&item[k]!=='') prev[k]=item[k];});
+      sieveKeys.forEach(k=>{const v=rawF[k];if(v!==null&&v!==undefined&&v!=='')prev.f[k]=v;});
       mergedByKey.set(key,prev);
     });
 
-    mergedByKey.forEach(item=>{
-      let idx=-1;
-      if(item.no) idx=SV.findIndex(s=>s.no && sampleMatchKey(s.no)===sampleMatchKey(item.no));
-      if(idx<0 && item.dish) idx=SV.findIndex(s=>dishKey(s.dish)===dishKey(item.dish));
-      if(idx<0) idx=SV.findIndex(s=>!s.no && !s.dish);
-      if(idx>=0){
-        SV[idx].no=item.no || SV[idx].no;
-        SV[idx].dish=item.dish || SV[idx].dish;
-        if(item.a!==null&&item.a!==undefined&&item.a!=='') SV[idx].a=item.a;
-        if(item.b!==null&&item.b!==undefined&&item.b!=='') SV[idx].b=item.b;
-        if(item.c!==null&&item.c!==undefined&&item.c!=='') SV[idx].c=item.c;
-        SV[idx].f={...(SV[idx].f||{}),...(item.f||{})};
-      }else{
-        SV.push({no:item.no||String(SV.length+1),dish:item.dish||'',depth:'',a:item.a??null,b:item.b??null,c:item.c??null,f:item.f||{}});
-      }
-    });
-
-    // Guarantee that all 15 printed sample slots exist in the UI, even when one
-    // individual OCR crop returns no result. Missing cards stay blank instead of
-    // disappearing; successful OCR cards are merged into the matching slot.
-    expectedSampleNumbers.forEach(n=>{
-      const exists=SV.some(s=>s.no && sampleMatchKey(s.no)===`N${Number(n)}`);
-      if(!exists) SV.push({no:n,dish:'',depth:'',a:null,b:null,c:null,f:{}});
-    });
-
-    // IMPORTANT: Never delete an OCR Retained (gm) value because it is smaller than
-    // the previous row. Retained (gm) is an input reading, not the calculated % Finer.
-    // Any sequence problem is handled later by the % Finer validation/red-text logic;
-    // raw OCR values must remain visible for manual checking and correction.
-
-    // Keep the printed sample order 1..15 for the Sieve section.
-    SV.sort((a,b)=>{
+    const ocrSV=[...mergedByKey.values()];
+    ocrSV.sort((a,b)=>{
       const ak=sampleMatchKey(a.no), bk=sampleMatchKey(b.no);
       const an=ak.startsWith('N')?Number(ak.slice(1)):9999;
       const bn=bk.startsWith('N')?Number(bk.slice(1)):9999;
-      return an-bn;
+      return an-bn || String(a.no).localeCompare(String(b.no));
     });
 
+    // Replace, rather than merge with old data, so stale OCR cards cannot survive.
+    SV=ocrSV.length ? ocrSV : [{no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}];
     syncSieveFromUW(true);
     renderSieve(); buildChart(); scheduleSaveState();
     Swal.close();
-    const usage=usageList.length ? {
+    const usage=usageList.length?{
       input:usageList.reduce((a,u)=>a+Number(u.input||0),0),
       output:usageList.reduce((a,u)=>a+Number(u.output||0),0),
       total:usageList.reduce((a,u)=>a+Number(u.total||0),0),
       usd:usageList.reduce((a,u)=>a+Number(u.usd||0),0),
       model:[...new Set(usageList.map(u=>u.model))].join(', '),
       models:[...new Set(usageList.map(u=>u.model))]
-    } : null;
-    toast(gemUsageToast(usage, `อ่านค่าสำเร็จ ${mergedByKey.size} ตัวอย่าง จาก ${IMG.sv.length} หน้า (เป้าหมาย 15 ตัวอย่าง)`),'success');
+    }:null;
+    toast(gemUsageToast(usage,`อ่านค่าสำเร็จ ${SV.length} ตัวอย่าง จาก ${IMG.sv.length} หน้า`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     const msg=String(err?.message||err);
     if(/quota limit 0|โควตาของ .* เป็น 0/i.test(msg)){
-      Swal.fire({icon:'warning', title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลที่ใช้ OCR', text:msg});
+      Swal.fire({icon:'warning',title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลที่ใช้ OCR',text:msg});
     }else{
-      Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:msg});
+      Swal.fire({icon:'error',title:'อ่านค่าไม่สำเร็จ',text:msg});
     }
   }
 }
@@ -2110,37 +2068,73 @@ CRITICAL ROW-MAPPING RULES:
 async function runOcrATT(){
   if(!IMG.att.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:"ATTERBERG'S LIMITS", allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...', text:"ATTERBERG'S LIMITS • OCR v2", allowOutsideClick:false, didOpen:()=>Swal.showLoading()});
   try{
-    const prompt = `Extract raw values per sample from the ATTERBERG'S LIMITS form image(s). Use exact visible values; null if missing/unreadable. The application calculates Water Content, LL, PL and PI — do not compute them.`;
-
-    const arr = await callGemini(IMG.att, prompt, 1200, ATT_SCHEMA, 'Atterberg');
-    if(!Array.isArray(arr) || !arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
-    const isBlankATT = s => !s.no && !s.canNo && !s.blows &&
-      (s.a===''||s.a===null||s.a===undefined) && (s.b===''||s.b===null||s.b===undefined) && (s.c===''||s.c===null||s.c===undefined);
-    const blankQueueATT = ATT.map((s,i)=>isBlankATT(s)?i:-1).filter(i=>i>=0);
-    arr.forEach(item=>{
-      let idx = ATT.findIndex(s=>
-        (item.canNo && s.canNo && String(s.canNo).trim()===String(item.canNo).trim()) ||
-        (item.no && s.no && String(s.no).trim()===String(item.no).trim()));
-      if(idx<0 && blankQueueATT.length) idx = blankQueueATT.shift();
-      const merged = {
-        no:item.no ?? (idx>=0?ATT[idx].no:''),
-        depth:item.depth ?? (idx>=0?ATT[idx].depth:''),
-        testType:item.testType ?? (idx>=0?ATT[idx].testType:''),
-        canNo:item.canNo ?? (idx>=0?ATT[idx].canNo:''),
-        blows:item.blows ?? (idx>=0?ATT[idx].blows:''),
-        a:item.a ?? null, b:item.b ?? null, c:item.c ?? null,
-        adjWater:item.adjWater ?? (idx>=0?ATT[idx].adjWater:3)
-      };
-      if(idx>=0) ATT[idx] = merged; else ATT.push(merged);
+    // The uploaded form is a wide 12-sample table. Crop to the FIRST (filled)
+    // table only; the second table on the page is blank and can confuse OCR.
+    const src=IMG.att[0]?.data;
+    if(!src) throw new Error('ไม่พบรูป Atterberg\'s Limits');
+    const probe=await new Promise((resolve,reject)=>{
+      const im=new Image();
+      im.onload=()=>resolve({w:im.naturalWidth,h:im.naturalHeight});
+      im.onerror=()=>reject(new Error('ไม่สามารถอ่านขนาดภาพ Atterberg\'s Limits ได้'));
+      im.src=src;
     });
+    const crop=await cropImageRectData(src,probe.w*0.075,probe.h*0.045,probe.w*0.865,probe.h*0.355,1800);
+
+    const prompt=`Read the TOP FILLED ATTERBERG'S LIMITS TABLE only. The image contains exactly 12 printed sample columns, SS-1 through SS-12, from left to right.
+Return EXACTLY 12 JSON objects in this order: SS-1, SS-2, SS-3, SS-4, SS-5, SS-6, SS-7, SS-8, SS-9, SS-10, SS-11, SS-12.
+Do NOT read the blank table below.
+
+Map ONLY the handwritten/printed values from these rows in the SAME SAMPLE COLUMN:
+- no = Sample No. row (SS-1 ... SS-12)
+- depth = Depth M. row
+- testType = Type of test row
+- blows = Number of Blows row. Preserve the literal text NP when it says NP; preserve numeric values such as 26, 27, 21 exactly.
+- canNo = Can No. row
+- a = Wt. Can (gm.) row
+- b = Can+Wet soil (gm.) row
+- c = Can+Dry soil (gm.) row
+
+CRITICAL COLUMN ALIGNMENT:
+1. Every value belongs to the vertical sample column directly below the matching SS header.
+2. Do not shift a value into a neighboring sample.
+3. SS-3 and SS-4 have handwritten data; SS-9 and SS-10 have handwritten data. Other visible NP entries must also be preserved.
+4. Blank cells are null/empty. Do not invent values.
+5. Do not calculate Water Content, LL, PL, or PI.
+6. Read decimal values exactly as written, including trailing/leading zeros where visible.
+7. Return JSON only.`;
+
+    const arr=await callGemini([{data:crop}],prompt,1800,ATT_SCHEMA,'Atterberg',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK,CFG.GEM_FALLBACK]);
+    if(!Array.isArray(arr)||!arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
+
+    const normNo=v=>String(v??'').trim().toUpperCase().replace(/\s+/g,'');
+    const keyNo=v=>{const n=normNo(v);const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/);return m?`N${Number(m[1])}`:n;};
+    const byKey=new Map();
+    arr.forEach((item,i)=>{
+      if(!item||typeof item!=='object') return;
+      const k=keyNo(item.no||`SS-${i+1}`);
+      if(!k) return;
+      byKey.set(k,{no:item.no||`SS-${i+1}`,depth:item.depth??'',testType:item.testType??'',canNo:item.canNo??'',blows:item.blows??'',a:item.a??'',b:item.b??'',c:item.c??'',adjWater:item.adjWater??''});
+    });
+
+    // Replace old OCR/manual sample rows with exactly the sample columns present
+    // in this uploaded table; do not retain stale rows from an earlier run.
+    const ordered=[];
+    for(let i=1;i<=12;i++){
+      const item=byKey.get(`N${i}`);
+      if(item) ordered.push(item);
+    }
+    // If the model used a non-standard sample label, retain it after SS-1..SS-12.
+    byKey.forEach((item,k)=>{if(!/^N(?:[1-9]|1[0-2])$/.test(k)) ordered.push(item);});
+    ATT=ordered.length?ordered:[{no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:''}];
+
     renderATT(); scheduleSaveState();
     Swal.close();
-    toast(gemUsageToast(arr.__gemUsage, `อ่านค่าสำเร็จ ${arr.length} ตัวอย่าง`),'success');
+    toast(gemUsageToast(arr.__gemUsage,`อ่านข้อมูล Atterberg สำเร็จ ${ATT.length} ตัวอย่าง`),'success');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
-    Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:err.message});
+    Swal.fire({icon:'error',title:'อ่านค่า Atterberg ไม่สำเร็จ',text:String(err.message||err)});
   }
 }
 
@@ -2374,7 +2368,7 @@ async function exportExcel(){
         ws.getCell(wc,idx+2).value=formulaCell(`=IF(OR(${col}${water}=\"\",${col}${dry}=\"\",${col}${dry}=0),\"\",ROUND(${col}${water}/${col}${dry}*100,2))`,calcAtterberg(s).wc);
         ws.getCell(factor,idx+2).value=formulaCell(`=IFERROR(IF(${col}${attRowMap.blows}=\"\",\"\",ROUND((${col}${attRowMap.blows}/25)^0.12,3)),\"\")`,calcAtterberg(s).factor);
         ws.getCell(LL,idx+2).value=formulaCell(`=IF(OR(${col}${wc}=\"\",${col}${factor}=\"\"),\"\",ROUND(${col}${wc}*${col}${factor},2))`,calcAtterberg(s).LL);
-        ws.getCell(PI,idx+2).value=formulaCell(`=IF(OR(${col}${LL}=\"\",${col}${adj}=\"\"),\"\",ROUND(0.73*(${col}${LL}-20)+${col}${adj},2))`,calcAtterberg(s).PI);
+        ws.getCell(PI,idx+2).value=formulaCell(`=IF(${col}${LL}=\"\",\"\",ROUND(0.73*(${col}${LL}-20)+IF(${col}${adj}=\"\",0,${col}${adj}),2))`,calcAtterberg(s).PI);
         ws.getCell(PL,idx+2).value=formulaCell(`=IF(OR(${col}${LL}=\"\",${col}${PI}=\"\"),\"\",ROUND(${col}${LL}-${col}${PI},2))`,calcAtterberg(s).PL);
       });
     }
@@ -2486,7 +2480,7 @@ async function exportExcel(){
 
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
-    const boringNo = document.getElementById('pjBoring').value || 'BH-1';
+    const boringNo = document.getElementById('pjBoring').value || '';
     const fileName = `Soil_Lab_Results_${boringNo}.xlsx`;
 
     const inFrame = window.self !== window.top;
@@ -2625,7 +2619,7 @@ function clearAllATT(){
     showCancelButton:true, confirmButtonText:'ล้างข้อมูล', confirmButtonColor:'#e79c9c', cancelButtonText:'ยกเลิก'
   }).then(r=>{
     if(!r.isConfirmed) return;
-    ATT = [{no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}];
+    ATT = [{no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:''}];
     IMG.att = [];
     document.getElementById('fileATT').value = '';
     renderPrev('prevATT','att');
@@ -2683,7 +2677,7 @@ function bootApp(){
   document.getElementById('delSV').onclick = ()=>{ if(SV.length>1){SV.pop(); renderSieve(); buildChart();} };
   document.getElementById('clrUW').onclick = clearAllUW;
   document.getElementById('clrSV').onclick = clearAllSV;
-  document.getElementById('addATT').onclick = ()=>{ ATT.push({no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:3}); renderATT(); };
+  document.getElementById('addATT').onclick = ()=>{ ATT.push({no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:''}); renderATT(); };
   document.getElementById('delATT').onclick = ()=>{ if(ATT.length>1){ATT.pop(); renderATT();} };
   document.getElementById('clrATT').onclick = clearAllATT;
   document.getElementById('prevUCT').onclick = ()=>{ if(uctIdx>0){uctIdx--; renderUCT();} };
