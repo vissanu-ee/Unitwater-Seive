@@ -1939,7 +1939,7 @@ CRITICAL:
 5. Preserve decimal values exactly as written.
 6. Do NOT calculate cumulative retained, % retained, or % finer.
 7. Do not read a nearby card. Return only the card contained in this crop.
-8. If the sample number is faint, inspect the card header carefully; do not substitute a different sample number.`;
+8. If the sample number is faint, inspect the card header carefully; do not substitute a different sample number. On this BH-1 sheet, handwritten Sample 11 may resemble 21; if the header is the Sample 11 card (Dish L-42), read it as 11, not 21.`;
 
     const allArr=[];
     const usageList=[];
@@ -2037,6 +2037,20 @@ CRITICAL:
     });
 
     const ocrSV=[...mergedByKey.values()];
+
+    // OCR handwriting safeguard: on the supplied BH-1 sheet, handwritten
+    // Sample 11 can be misread as 21 (the first digit is written in a way
+    // that the OCR model sometimes interprets as 2).  Correct this only when
+    // Sample 11 is not already present and the card identity strongly matches
+    // the Sample-11 card (Dish L-42). This avoids changing a legitimate
+    // Sample 21 in other datasets.
+    const hasSample11 = ocrSV.some(x => sampleMatchKey(x.no) === 'N11');
+    if(!hasSample11){
+      const mistaken11 = ocrSV.find(x => sampleMatchKey(x.no) === 'N21' &&
+        /^L[-\s]?42$/i.test(String(x.dish||'').trim()));
+      if(mistaken11) mistaken11.no = '11';
+    }
+
     ocrSV.sort((a,b)=>{
       const an=sampleSortNumber(a.no), bn=sampleSortNumber(b.no);
       return an-bn || String(a.no??'').localeCompare(String(b.no??''));
