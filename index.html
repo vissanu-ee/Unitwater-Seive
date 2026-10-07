@@ -132,6 +132,7 @@ tailwind.config = {
     <button data-tab="att"   class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">④ Atterberg's Limits</button>
     <button data-tab="uct"   class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">⑤ Unconfined Compression</button>
     <button data-tab="summary" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">⑥ Summary</button>
+    <button data-tab="uctdry" class="tab-btn px-5 py-2.5 rounded-lg text-sm font-semibold transition">⑦ Unconfined Compression (Dry Mixed)</button>
   </div>
 </nav>
 
@@ -275,6 +276,7 @@ tailwind.config = {
         <p>(N/25)^0.12 = แฟกเตอร์ปรับค่าจากจำนวนครั้งตอก N (One-point Liquid Limit Method)</p>
         <p>LIQUID LIMIT (%) = WATER CONTENT × (N/25)^0.12</p>
         <p>PLASTICITY INDEX (%) = 0.73×(LL − 20) + ADJ. WATER</p>
+        <p>ADJ. WATER = 3 เมื่อ WATER CONTENT ≤ 50 , = 2 เมื่อ WATER CONTENT &gt; 50 (คำนวณอัตโนมัติ)</p>
         <p>PLASTIC LIMIT (%) = LIQUID LIMIT − PLASTICITY INDEX</p>
         <p class="text-slate-400">หาก NUMBER OF BLOWS เป็น "NP" (Non-Plastic) ระบบจะไม่คำนวณ LL/PL/PI ให้</p>
       </div>
@@ -335,7 +337,7 @@ tailwind.config = {
         <h3 class="text-sm font-bold text-[#1d2772] mb-2">สูตรคำนวณ (อ้างอิงโครงสร้างเดิมจากไฟล์ Excel)</h3>
         <p>A (cm²) = π D² / 4</p>
         <p>V (cm³) = A × h</p>
-        <p>W (g) = (Wet Soil+Container) − (Container)</p>
+        <p>W (g) = Weight of Soil (Input จากช่อง “น้ำหนัก”)</p>
         <p>γt (t/m³) = W / V</p>
         <p>w (%) = (Wet−Dry Soil+Cont.) / (Dry Soil+Cont.−Container) × 100</p>
         <p>γd (t/m³) = 100 × γt / (100 + w)</p>
@@ -356,6 +358,71 @@ tailwind.config = {
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <h3 class="text-sm font-bold text-[#1d2772] mb-3">Deviator Stress – Axial Strain Curve</h3>
         <div class="h-[360px]"><canvas id="uctChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ TAB 7 : UNCONFINED COMPRESSION TEST (DRY MIXED) ============ -->
+<main id="tab-uctdry" class="tab-panel hidden max-w-[1500px] mx-auto px-5 py-5 fade-in">
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-5 no-print">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h3 id="uctDryPageLabel" class="text-sm font-bold text-[#1d2772]">ตัวอย่างที่ 1 / 3 — Unconfined Compression Test (Dry Mixed)</h3>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="prevUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">‹ ก่อนหน้า</button>
+        <button id="nextUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">ถัดไป ›</button>
+        <button id="addUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-[#e7e8f1] text-[#1d2772] font-semibold hover:bg-[#cacde2] transition">+ เพิ่มตัวอย่าง</button>
+        <button id="delUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-[#fbe6e6] text-[#a04040] font-semibold hover:bg-[#f5c9c9] transition">− ลบตัวอย่าง</button>
+        <button id="clrUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition font-semibold">🗑 ล้างข้อมูลทั้งหมด</button>
+        <button id="exportUCTDry" class="text-xs px-3.5 py-2 rounded-lg bg-[#1d2772] text-white font-semibold hover:bg-[#0c1557] transition">📊 Export Excel หมวด 7</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-4 gap-5">
+    <div class="xl:col-span-1 space-y-4">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">อัปโหลดรูปฟอร์ม — Unconfined Compression Test (Dry Mixed)</h3>
+        <p class="text-[11px] text-slate-500 mb-3">1 รูปมี 3 ตัวอย่างทดสอบ ระบบจะแยกซ้าย→ขวาเป็นตัวอย่างที่ 1, 2, 3 และแสดงไม่เกิน 32 แถว (ถ้า R เกิน 320 จะแสดง R = 0, 20, … 300 แล้วต่อด้วย R ตั้งแต่ 340 ทีละ 20/30/40 ตามที่ AI เลือก)</p>
+        <div id="dzUCTDry" class="dropzone border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+          <div class="text-3xl mb-1">🖼️</div>
+          <p class="text-xs text-slate-500">ลากไฟล์มาวาง หรือ <span class="text-[#3845a8] font-semibold">คลิกเลือกไฟล์</span></p>
+          <input id="fileUCTDry" type="file" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="prevUCTDryImg" class="grid grid-cols-3 gap-2 mt-3"></div>
+        <button id="ocrUCTDry" class="mt-3 w-full py-2.5 rounded-lg bg-[#1d2772] text-white text-xs font-semibold hover:bg-[#0c1557] transition">
+          ⚡ อ่านข้อมูล 3 ตัวอย่างด้วย AI (OCR)
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctDryInfoBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctDrySpecBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-2" id="uctDryWaterBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5" id="uctDryResultBox"></div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 text-xs space-y-1.5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-2">สูตรคำนวณ — ใช้สูตรเดียวกับหมวด ⑤</h3>
+        <p>A (cm²) = πD² / 4</p>
+        <p>V (cm³) = A × h</p>
+        <p>W (g) = Weight of Soil (Input จากช่อง “น้ำหนัก”)</p>
+        <p>γt (t/m³) = W / V</p>
+        <p>w (%) = (Wet−Dry Soil+Cont.) / (Dry Soil+Cont.−Container) × 100</p>
+        <p>E = R×10⁻² / (10×h)</p>
+        <p>A' = A / (1−E)</p>
+        <p>P = K × Q</p>
+        <p>σ1−σ3 = 10P / A'</p>
+        <p><b>qu</b> = MAX(σ1−σ3)</p>
+        <p><b>Su</b> = qu / 2</p>
+        <p class="pt-1 border-t text-slate-500">แสดงไม่เกิน <b>32 แถว</b> (R เกิน 320 → แสดง R = 0, 20, … 300 แล้วต่อด้วย R ≥ 340 ทีละ 20/30/40)</p>
+      </div>
+    </div>
+    <div class="xl:col-span-3 space-y-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="overflow-x-auto max-h-[560px]">
+          <table id="tblUCTDry" class="min-w-full text-xs border-collapse"></table>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-3">Deviator Stress – Axial Strain Curve (Dry Mixed)</h3>
+        <div class="h-[360px]"><canvas id="uctDryChart"></canvas></div>
       </div>
     </div>
   </div>
@@ -559,6 +626,21 @@ function newUCT(){
 let UCT = [newUCT()];
 let uctIdx = 0;
 
+// Category 7 — Unconfined Compression Test (Dry Mixed).
+// Three blank specimens by default; no example/sample values are prefilled.
+// ตรงกับแถวในฟอร์ม: R ทุก 10 ตั้งแต่ 0 ถึง 300 แล้วต่อด้วย 320 (ฟอร์มไม่มีแถว 310)
+const UCT_DRY_R = [0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200,210,220,230,240,250,260,270,280,290,300,320];
+const UCT_DRY_MAX_R = 320;      // R สูงสุดของฟอร์มปกติ (32 แถว)
+const UCT_DRY_ROWS = 32;        // จำนวนแถวสูงสุดที่แสดง
+const UCT_DRY_COMPACT_MAX_R = 340; // กรณี R เกิน 320: แสดงเฉพาะ 0,20,40,...,340
+const dryValidR = R => !(R===null||R===undefined||R==='');
+function dryRs(t){ return (t && Array.isArray(t.R) && t.R.length===UCT_DRY_ROWS) ? t.R : UCT_DRY_R; }
+function newUCTDry(){
+  return {no:'',depth:'',soilType:'',cementContent:'',curingAge:'',strainRate:'',K:'',H:'',D:'',soilWeight:'',cont:'',b:'',c:'',a:'',Q:UCT_DRY_R.map(()=> ''),R:UCT_DRY_R.slice()};
+}
+let UCT_DRY = [newUCTDry(),newUCTDry(),newUCTDry()];
+let uctDryIdx = 0;
+
 // Summary of Test Results — completely blank initial form.
 const DEFAULT_SUMMARY = [
   {no:'', from:'', to:'', wn:'', ll:'', pl:'', g4:'', g10:'', g40:'', g100:'', g200:'', uscs:'', pp:'', fv:'', qu:'', gt:'', sptN:''}
@@ -578,7 +660,7 @@ function summaryHasData(arr){
    ===================================================================== */
 function appStateKey(){return userStateKey();}
 let _saveTimer=null,_loadingState=false;
-function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:31,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
+function saveAppState(){if(_loadingState)return;try{const project={};document.querySelectorAll('input[id^="pj"],textarea[id^="pj"],select[id^="pj"]').forEach(el=>project[el.id]=el.value);localStorage.setItem(appStateKey(),JSON.stringify({version:35,project,UW,SV,ATT,UCT,SUM,uctIdx}));}catch(e){console.warn('saveAppState',e);}}
 function scheduleSaveState(){clearTimeout(_saveTimer);_saveTimer=setTimeout(saveAppState,200);}
 function moduleHasData(arr, kind){
   if(!Array.isArray(arr) || !arr.length) return false;
@@ -586,6 +668,7 @@ function moduleHasData(arr, kind){
   if(kind==='SV') return arr.some(s=>s && (String(s.no??'').trim()!=='' || String(s.dish??'').trim()!=='' || Object.values(s.f||{}).some(v=>num(v)!==null)));
   if(kind==='ATT') return arr.some(s=>s && (String(s.no??'').trim()!=='' || num(s.a)!==null || num(s.b)!==null || num(s.c)!==null || num(s.blows)!==null));
   if(kind==='UCT') return arr.some(s=>s && (String(s.no??'').trim()!=='' || num(s.H)!==null || num(s.D)!==null || (Array.isArray(s.Q)&&s.Q.some(v=>num(v)!==null))));
+  if(kind==='UCT_DRY') return arr.some(s=>s && (String(s.no??'').trim()!=='' || num(s.H)!==null || num(s.D)!==null || num(s.soilWeight)!==null || (Array.isArray(s.Q)&&s.Q.some(v=>num(v)!==null))));
   return false;
 }
 function loadAppState(){
@@ -595,7 +678,7 @@ function loadAppState(){
     const raw=localStorage.getItem(appStateKey());
     if(!raw) return false;
     const st=JSON.parse(raw);
-    if(!st || ![29,30].includes(Number(st.version))) return false;
+    if(!st || Number(st.version)!==34) return false;
     _loadingState=true;
     if(st.project) Object.entries(st.project).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v??'';});
     // Only restore a module when the saved module actually contains data.
@@ -608,6 +691,8 @@ function loadAppState(){
     if(moduleHasData(st.UCT,'UCT')) UCT=st.UCT;
     if(Array.isArray(st.SUM)&&summaryHasData(st.SUM)) SUM=st.SUM; else SUM=cloneDefaultSummary();
     if(Number.isFinite(Number(st.uctIdx))) uctIdx=Math.min(Math.max(Number(st.uctIdx),0),Math.max(0,UCT.length-1));
+    // หมวด 7 (Dry Mixed): เริ่มต้นเป็นค่าว่างทุกครั้งที่เปิดโปรแกรม ไม่กู้ค่าจากที่เคยบันทึก
+    UCT_DRY=[newUCTDry(),newUCTDry(),newUCTDry()]; uctDryIdx=0;
     _loadingState=false;
     return true;
   }catch(e){
@@ -738,11 +823,12 @@ function calcAtterberg(s){
   const wc       = (water!==null&&drySoil!==null&&drySoil!==0) ? r2(water/drySoil*100) : null;
   const factor   = (N!==null) ? r3(Math.pow(N/25,0.12)) : null;
   const LL       = (wc!==null&&factor!==null) ? r2(wc*factor) : null;
-  // ADJ. WATER is optional; blank means 0.
-  const adj      = adjW===null ? 0 : adjW;
+  // ADJ. WATER (auto): WATER CONTENT <= 50 -> 3 ; WATER CONTENT > 50 -> 2
+  const adjWater = (wc!==null) ? (wc<=50 ? 3 : 2) : null;
+  const adj      = adjWater===null ? 0 : adjWater;
   const PI       = (LL!==null) ? r2(0.73*(LL-20)+adj) : null;
   const PL       = (LL!==null&&PI!==null) ? r2(LL-PI) : null;
-  return {water,drySoil,wc,factor,LL,PI,PL};
+  return {water,drySoil,wc,factor,LL,PI,PL,adjWater};
 }
 
 /* ---- Unconfined Compression Test ---- */
@@ -770,6 +856,102 @@ function calcUCTSummary(t){
   const qu = stresses.length ? r2(Math.max(...stresses)) : null;
   const su = (qu!==null) ? r2(qu/2) : null;
   return {area, vol, W, gt, water, drySoil, wc, gd, qu, su};
+}
+
+/* ---- Unconfined Compression Test (Dry Mixed) ---- */
+/* ---- Module 7 helpers: rounding + unit normalisation (Dry Mixed only) ---- */
+function dryRnd(v,d){
+  if(v===null||v===undefined||v===''||!isFinite(v)) return null;
+  v=Number(v);
+  let n=(String(v).indexOf('e')>=0)?Math.round(v*Math.pow(10,d))/Math.pow(10,d):Number(Math.round(v+'e'+d)+'e-'+d);
+  return (n===0)?0:n;                      // กัน -0 และเศษทศนิยมลอย (เช่น 0.30000000000000004)
+}
+// ฟอร์มจริงเขียน H, D เป็น มม. (เช่น 91.62 / 44.57) แต่สูตรใช้ ซม. → ถ้าค่ามากผิดปกติให้แปลง มม.→ซม. อัตโนมัติ
+function dryIsMM(t){ const H=num(t.H), D=num(t.D); return (H!==null&&H>=25)||(D!==null&&D>=12); }
+function dryDims(t){
+  let H=num(t.H), D=num(t.D);
+  if(H!==null&&H>=25) H=H/10;
+  if(D!==null&&D>=12) D=D/10;
+  return {H,D};
+}
+function calcUCTDryRow(t, R, Q){
+  const {H,D}=dryDims(t);
+  const K=num(t.K)??0.0653;
+  const q=num(Q);
+  const area=(D!==null)?D*D*3.14285/4:null;
+  const strain=(H)?(R*0.01)/(10*H):null;
+  if(q===null) return {area:null,strain:dryRnd(strain,4),corrArea:null,load:null,stress:null};
+  const corrArea=(strain!==null&&area!==null)?area/(1-strain):null;
+  const load=(q===0)?0:K*q;
+  const stress=(corrArea)?load*10/corrArea:null;
+  return {area:dryRnd(area,3),strain:dryRnd(strain,4),corrArea:dryRnd(corrArea,3),load:dryRnd(load,3),stress:dryRnd(stress,2)};
+}
+function calcUCTDrySummary(t){
+  const {H,D}=dryDims(t);
+  const a=num(t.a), b=num(t.b), c=num(t.c);
+  const area=(D!==null)?dryRnd(D*D*3.14285/4,3):null;
+  const vol=(area!==null&&H!==null)?dryRnd(area*H,2):null;
+  const W=dryRnd(num(t.soilWeight),2);
+  const gt=(W!==null&&vol)?dryRnd(W/vol,2):null;
+  const water=(b!==null&&c!==null)?dryRnd(b-c,2):null;
+  const drySoil=(c!==null&&a!==null)?dryRnd(c-a,2):null;
+  const wc=(water!==null&&drySoil)?dryRnd(water/drySoil*100,2):null;
+  const gd=(gt!==null&&wc!==null)?dryRnd(100*gt/(100+wc),2):null;
+  const stresses=dryRs(t).map((R,i)=>dryValidR(R)?calcUCTDryRow(t,R,t.Q[i]).stress:null).filter(v=>v!==null);
+  const qu=stresses.length?dryRnd(Math.max(...stresses),2):null;
+  const su=qu!==null?dryRnd(qu/2,2):null;
+  return {area,vol,W,gt,water,drySoil,wc,gd,qu,su};
+}
+function normalizeUCTDryReadings(readings,showStep){
+  const seen=new Set();
+  const raw=(Array.isArray(readings)?readings:[])
+    .map(x=>({r:num(x?.r),q:num(x?.q)}))
+    .filter(x=>x.r!==null&&x.q!==null)
+    .sort((a,b)=>a.r-b.r)
+    .filter(x=>seen.has(x.r)?false:(seen.add(x.r),true));
+  if(!raw.length) return {compact:false,rows:[]};
+
+  // กรณีปกติ: ข้อมูลไม่เกิน R=320 → แสดงตรงตามฟอร์ม (32 แถว) ไม่เฉลี่ย ไม่มีทศนิยม
+  if(raw[raw.length-1].r<=UCT_DRY_MAX_R){
+    return {compact:false,rows:raw.filter(x=>UCT_DRY_R.indexOf(x.r)>=0)};
+  }
+
+  // กรณีเกิน 320: แสดง R = 0,20,40,...,300 ตามค่าที่อ่านได้จริง (ไม่เฉลี่ย)
+  const rows=raw.filter(x=>x.r<=300 && x.r%20===0).map(x=>({r:x.r,q:x.q}));
+  // ส่วนที่เริ่มจาก R >= 340 → แสดงทีละ 20/30/40 (AI เลือก) โดยรวมทุกแถวไม่เกิน 32 แถว
+  const tail=raw.filter(x=>x.r>=340);
+  const room=Math.max(0,UCT_DRY_ROWS-rows.length);
+  if(tail.length && room>0){
+    const anchor=tail[0].r, maxR=tail[tail.length-1].r;
+    const pick=k=>{                       // เลือกค่าที่อ่านได้ใกล้ anchor, anchor+k, anchor+2k, ... ที่สุด
+      const out=[];
+      for(let T=anchor;T<=maxR;T+=k){
+        let best=null;
+        tail.forEach(x=>{ if(best===null||Math.abs(x.r-T)<Math.abs(best.r-T)) best=x; });
+        if(best&&!out.includes(best)) out.push(best);
+      }
+      return out;
+    };
+    let step=Number(showStep);
+    if(![20,30,40].includes(step)||pick(step).length>room){
+      step=20;
+      for(const sz of [20,30,40]){ step=sz; if(pick(sz).length<=room) break; }
+      while(pick(step).length>room && step<100000) step+=10;
+    }
+    pick(step).forEach(x=>rows.push({r:x.r,q:x.q}));
+  }
+  return {compact:true,rows:rows.slice(0,UCT_DRY_ROWS)};
+}
+function applyUCTDryReadings(t,readings,showStep){
+  const res=normalizeUCTDryReadings(readings,showStep);
+  const Rn=UCT_DRY_R.map(()=>null), Qn=UCT_DRY_R.map(()=> '');
+  if(!res.compact){
+    UCT_DRY_R.forEach((r,i)=>Rn[i]=r);
+    res.rows.forEach(x=>{const i=UCT_DRY_R.indexOf(x.r); if(i>=0) Qn[i]=x.q;});
+  }else{
+    res.rows.forEach((x,k)=>{Rn[k]=x.r;Qn[k]=x.q;});
+  }
+  t.R=Rn; t.Q=Qn;
 }
 
 /* ---- Summary of Test Results ---- */
@@ -1072,7 +1254,7 @@ const ATT_ROWS = [
   {n:13, label:'PLASTIC LIMIT', unit:'%', key:'PL', type:'calc'},
   {n:14, label:'PLASTICITY INDEX', unit:'%', key:'PI', type:'calc'},
   {n:15, label:'(N/25)^0.12', unit:'', key:'factor', type:'calc'},
-  {n:16, label:'ADJ. WATER', unit:'', key:'adjWater', type:'input'}
+  {n:16, label:'ADJ. WATER', unit:'', key:'adjWater', type:'calc'}
 ];
 
 function renderATT(){
@@ -1200,262 +1382,58 @@ function calcRow(label, val, unit){
     <span class="calc-cell rounded px-2 py-0.5 font-semibold">${show(val)} <span class="text-[10px] font-normal opacity-70">${unit||''}</span></span></div>`;
 }
 
-function renderUCT(){
-  if(uctIdx>=UCT.length) uctIdx = UCT.length-1;
-  if(uctIdx<0) uctIdx = 0;
-  const t = UCT[uctIdx];
-  document.getElementById('uctPageLabel').textContent = `ตัวอย่างที่ ${uctIdx+1} / ${UCT.length} — คำนวณหน้าละ 1 หลุมเจาะดินเท่านั้น`;
-
-  document.getElementById('uctInfoBox').innerHTML = `
-    <h3 class="text-sm font-bold text-[#1d2772] mb-1">ข้อมูลตัวอย่าง</h3>
-    ${infoRow('Sample No.','uctNo',t.no)}
-    ${infoRow('Depth','uctDepth',t.depth,'m.')}
-    ${infoRow('Soil Sample','uctSoilType',t.soilType)}
-    ${infoRow('Strain Rate','uctStrainRate',t.strainRate,'mm/min.')}
-    ${infoRow('Load Scale K (=K×Q)','uctK',t.K,'kg./div.')}`;
-
-  document.getElementById('uctSpecBox').innerHTML = `
-    <h3 class="text-sm font-bold text-[#1d2772] mb-1">SOIL SPECIMEN MEASUREMENTS</h3>
-    ${infoRow('Height, h','uctH',t.H,'cm.')}
-    ${infoRow('Diameter, D','uctD',t.D,'cm.')}
-    ${infoRow('Wt. Soil+Split Former','uctSoilSplitFormer',t.soilSplitFormer,'g')}
-    ${infoRow('Wt. Split Former','uctSplitFormer',t.splitFormer,'g')}`;
-
-  document.getElementById('uctWaterBox').innerHTML = `
-    <h3 class="text-sm font-bold text-[#1d2772] mb-1">WATER CONTENT DETERMINATION</h3>
-    ${infoRow('Container No.','uctCont',t.cont)}
-    ${infoRow('Wet Soil + Container','uctB',t.b,'g')}
-    ${infoRow('Dry Soil + Container','uctC',t.c,'g')}
-    ${infoRow('Weight of Container','uctA',t.a,'g')}`;
-
-  const sum = calcUCTSummary(t);
-  document.getElementById('uctResultBox').innerHTML = `
-    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
-    <div class="space-y-1.5 text-xs">
-      ${calcRow('Area, A', sum.area, 'cm²')}
-      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
-      ${calcRow('Weight of Soil, W', sum.W, 'g')}
-      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
-      ${calcRow('Weight of Water', sum.water, 'g')}
-      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
-      ${calcRow('Water Content, w', sum.wc, '%')}
-      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
-      <div class="pt-2 mt-2 border-t space-y-1.5">
-        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
-        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
-      </div>
-    </div>`;
-
-  let html = `<thead><tr class="bg-[#0f185a] text-white text-[11px]">
-    <th class="px-2 py-2">Deformation<br>Dial R<br>(x0.01 mm)</th>
-    <th class="px-2 py-2">Load Dial, Q<br>(x0.0001 in.)</th>
-    <th class="px-2 py-2">Axial Strain<br>E=Rx10⁻²/10h</th>
-    <th class="px-2 py-2">Corrected Area<br>A'=A/(1-E) (cm²)</th>
-    <th class="px-2 py-2">Deviator Load<br>P=Q.K (kg)</th>
-    <th class="px-2 py-2">Deviator Stress<br>σ1-σ3=10P/A' (t/m²)</th>
-  </tr></thead><tbody>`;
-  UCT_R.forEach((R,i)=>{
-    const c = calcUCTRow(t,R,t.Q[i]);
-    html += `<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}">
-      <td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td>
-      <td class="tbl-cell input-cell px-1 py-1"><input data-row="${i}" value="${show(t.Q[i])}"></td>
-      <td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td>
-      <td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td>
-      <td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td>
-      <td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td>
-    </tr>`;
-  });
-  html += `</tbody>`;
-  const tbl = document.getElementById('tblUCT');
-  tbl.innerHTML = html;
-
-  // bind info-box inputs
-  const bind = (id,obj,key,onchange)=>{
-    const el = document.getElementById(id);
-    el.addEventListener('input', e=>{ obj[key]=e.target.value; if(onchange) onchange(); });
-  };
-  bind('uctNo',t,'no'); bind('uctDepth',t,'depth'); bind('uctSoilType',t,'soilType');
-  bind('uctStrainRate',t,'strainRate');
-  bind('uctK',t,'K',()=>{ refreshUCTCalcOnly(); });
-  bind('uctH',t,'H',()=>{ refreshUCTCalcOnly(); });
-  bind('uctD',t,'D',()=>{ refreshUCTCalcOnly(); });
-  bind('uctSoilSplitFormer',t,'soilSplitFormer'); bind('uctSplitFormer',t,'splitFormer');
-  bind('uctCont',t,'cont');
-  bind('uctB',t,'b',()=>{ refreshUCTCalcOnly(); });
-  bind('uctC',t,'c',()=>{ refreshUCTCalcOnly(); });
-  bind('uctA',t,'a',()=>{ refreshUCTCalcOnly(); });
-
-  tbl.querySelectorAll('input[data-row]').forEach(inp=>{
-    inp.addEventListener('input', e=>{
-      t.Q[e.target.dataset.row] = e.target.value;
-      refreshUCTCalcOnly();
-    });
-  });
-
-  buildUCTChart();
+function preserveUCTDryRaw(v){
+  if(v===null||v===undefined) return v;
+  if(typeof v==='string') return v.trim();
+  return String(v);
 }
 
-function refreshUCTCalcOnly(){
-  const t = UCT[uctIdx];
-  const sum = calcUCTSummary(t);
-  document.getElementById('uctResultBox').innerHTML = `
-    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
-    <div class="space-y-1.5 text-xs">
-      ${calcRow('Area, A', sum.area, 'cm²')}
-      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
-      ${calcRow('Weight of Soil, W', sum.W, 'g')}
-      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
-      ${calcRow('Weight of Water', sum.water, 'g')}
-      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
-      ${calcRow('Water Content, w', sum.wc, '%')}
-      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
-      <div class="pt-2 mt-2 border-t space-y-1.5">
-        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
-        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
-      </div>
-    </div>`;
-  const tbl = document.getElementById('tblUCT');
-  const rows = tbl.querySelectorAll('tbody tr');
-  UCT_R.forEach((R,i)=>{
-    const c = calcUCTRow(t,R,t.Q[i]);
-    const cells = rows[i].querySelectorAll('td');
-    cells[2].textContent = show(c.strain);
-    cells[3].textContent = show(c.corrArea);
-    cells[4].textContent = show(c.load);
-    cells[5].textContent = show(c.stress);
-  });
-  buildUCTChart();
+function renderUCTDry(){
+  if(!UCT_DRY.length) UCT_DRY=[newUCTDry(),newUCTDry(),newUCTDry()];
+  if(uctDryIdx>=UCT_DRY.length) uctDryIdx=UCT_DRY.length-1;
+  if(uctDryIdx<0) uctDryIdx=0;
+  const t=UCT_DRY[uctDryIdx];
+  document.getElementById('uctDryPageLabel').textContent=`ตัวอย่างที่ ${uctDryIdx+1} / ${UCT_DRY.length} — Unconfined Compression Test (Dry Mixed)`;
+  document.getElementById('uctDryInfoBox').innerHTML=`<h3 class="text-sm font-bold text-[#1d2772] mb-1">ข้อมูลตัวอย่าง</h3>${infoRow('Sample No.','uctDryNo',t.no)}${infoRow('Depth','uctDryDepth',t.depth,'m.')} ${infoRow('Soil Sample','uctDrySoilType',t.soilType)} ${infoRow('Cement Content','uctDryCement',t.cementContent,'kg./m³')} ${infoRow('Curing Age','uctDryCuringAge',t.curingAge,'days')} ${infoRow('Strain Rate','uctDryStrainRate',t.strainRate,'mm/min.')} ${infoRow('Load Scale K (=K×Q)','uctDryK',t.K,'kg./div.')}`;
+  document.getElementById('uctDrySpecBox').innerHTML=`<h3 class="text-sm font-bold text-[#1d2772] mb-1">SOIL SPECIMEN MEASUREMENTS</h3>${infoRow('Height, h','uctDryH',t.H,'cm.')} ${infoRow('Diameter, D','uctDryD',t.D,'cm.')} ${infoRow('Weight of Soil','uctDrySoilWeight',t.soilWeight,'g')}`;
+  document.getElementById('uctDryWaterBox').innerHTML=`<h3 class="text-sm font-bold text-[#1d2772] mb-1">WATER CONTENT DETERMINATION</h3>${infoRow('Container No.','uctDryCont',t.cont)}${infoRow('Wet Soil + Container (Can + Wet Soil)','uctDryB',t.b,'g')}${infoRow('Dry Soil + Container (Can + Dry Soil)','uctDryC',t.c,'g')}${infoRow('Weight of Container (Wt. Can)','uctDryA',t.a,'g')}<div class="pt-2 mt-2 border-t text-[10px] text-slate-400">Raw input mapping: a = Wt. Can · b = Can + Wet Soil · c = Can + Dry Soil</div>`;
+  const sum=calcUCTDrySummary(t);
+  document.getElementById('uctDryResultBox').innerHTML=`<h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3><div class="space-y-1.5 text-xs">${calcRow('Area, A',sum.area,'cm²')}${calcRow('Volume, V=A.h',sum.vol,'cm³')}${calcRow('Weight of Soil, W',sum.W,'g')}${calcRow('Wet Unit Weight, γt',sum.gt,'t/m³')}${calcRow('Weight of Water',sum.water,'g')}${calcRow('Weight of Dry Soil',sum.drySoil,'g')}${calcRow('Water Content, w',sum.wc,'%')}${calcRow('Dry Unit Weight, γd',sum.gd,'t/m³')}<div class="pt-2 mt-2 border-t space-y-1.5">${calcRow('Unconfined Compressive Strength, qu',sum.qu,'t/m²')}${calcRow('Undrained Shear Strength, Su',sum.su,'t/m²')}</div></div>`;
+  let html=`<thead><tr class="bg-[#0f185a] text-white text-[11px]"><th class="px-2 py-2">Deformation<br>Dial R<br>(x0.01 mm)</th><th class="px-2 py-2">Load Dial, Q<br>(x0.0001 in.)</th><th class="px-2 py-2">Axial Strain<br>E=Rx10⁻²/10h</th><th class="px-2 py-2">Corrected Area<br>A'=A/(1-E) (cm²)</th><th class="px-2 py-2">Deviator Load<br>P=Q.K (kg)</th><th class="px-2 py-2">Deviator Stress<br>σ1-σ3=10P/A' (t/m²)</th></tr></thead><tbody>`;
+  dryRs(t).forEach((R,i)=>{if(!dryValidR(R)){html+='<tr class="border-b border-slate-100 '+(i%2?'bg-slate-50/60':'bg-white')+'"><td class="px-2 py-1 text-center font-mono text-slate-500">&nbsp;</td><td class="tbl-cell input-cell px-1 py-1"><input disabled value="" style="opacity:.35"></td>'+'<td class="px-2 py-1 text-center calc-cell">&nbsp;</td>'.repeat(4)+'</tr>';return;}const c=calcUCTDryRow(t,R,t.Q[i]);html+=`<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}"><td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td><td class="tbl-cell input-cell px-1 py-1"><input data-dry-row="${i}" value="${show(t.Q[i])}"></td><td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td><td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td></tr>`;});
+  html+='</tbody>';
+  const tbl=document.getElementById('tblUCTDry');tbl.innerHTML=html;
+  const bindDry=(id,obj,key,onchange)=>{const el=document.getElementById(id);el.addEventListener('input',e=>{obj[key]=e.target.value;if(onchange)onchange();scheduleSaveState();});};
+  bindDry('uctDryNo',t,'no');bindDry('uctDryDepth',t,'depth');bindDry('uctDrySoilType',t,'soilType');bindDry('uctDryCement',t,'cementContent');bindDry('uctDryCuringAge',t,'curingAge');bindDry('uctDryStrainRate',t,'strainRate');bindDry('uctDryK',t,'K',()=>refreshUCTDryCalcOnly());bindDry('uctDryH',t,'H',()=>refreshUCTDryCalcOnly());bindDry('uctDryD',t,'D',()=>refreshUCTDryCalcOnly());bindDry('uctDrySoilWeight',t,'soilWeight',()=>refreshUCTDryCalcOnly());bindDry('uctDryCont',t,'cont');bindDry('uctDryB',t,'b',()=>refreshUCTDryCalcOnly());bindDry('uctDryC',t,'c',()=>refreshUCTDryCalcOnly());bindDry('uctDryA',t,'a',()=>refreshUCTDryCalcOnly());
+  tbl.querySelectorAll('input[data-dry-row]').forEach(inp=>inp.addEventListener('input',e=>{t.Q[e.target.dataset.dryRow]=e.target.value;refreshUCTDryCalcOnly();scheduleSaveState();}));
+  buildUCTDryChart();
 }
-
-let uctChart=null;
-function computeUCTChartData(t){
-  const pts = UCT_R.map((R,i)=>{
-    const qRaw = t.Q[i];
-    if(qRaw===''||qRaw===null||qRaw===undefined) return null; // ยังไม่ได้กรอกแถวนี้ ไม่ต้องพลอตจุด
-    const c = calcUCTRow(t,R,qRaw);
-    return (c.strain!==null && c.stress!==null) ? {x:r2(c.strain*100), y:c.stress} : null;
-  }).filter(p=>p);
-  const su = calcUCTSummary(t).su;
-  return {pts, su};
+function refreshUCTDryCalcOnly(){
+  const a=document.activeElement; let sel=null;
+  if(a&&a.tagName==='INPUT') sel={id:a.id,row:a.dataset?a.dataset.dryRow:undefined,pos:a.selectionStart};
+  renderUCTDry();
+  if(sel){
+    const el=sel.id?document.getElementById(sel.id):document.querySelector(`#tblUCTDry input[data-dry-row="${sel.row}"]`);
+    if(el){el.focus();try{el.setSelectionRange(sel.pos,sel.pos);}catch(e){}}
+  }
 }
-
-function buildUCTChart(){
-  const t = UCT[uctIdx];
-  const ctx = document.getElementById('uctChart');
-  const {pts, su} = computeUCTChartData(t);
-
-  if(uctChart) uctChart.destroy();
-  uctChart = new Chart(ctx,{
-    type:'line',
-    data:{datasets:[
-      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
-       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
-       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
-      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
-       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
-       borderColor:'#ff0000', backgroundColor:'#ff0000'}
-    ]},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}, grid:{color:'#eaebf2'}},
-        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}, grid:{color:'#eaebf2'}}
-      },
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
-    }
-
-  });
+function computeUCTDryChartData(t){const pts=dryRs(t).map((R,i)=>{if(!dryValidR(R))return null;const q=num(t.Q[i]);if(q===null)return null;const c=calcUCTDryRow(t,R,q);return {x:dryRnd(c.strain*100,2),y:c.stress};}).filter(Boolean);return pts;}
+function buildUCTDryChart(){
+  const el=document.getElementById('uctDryChart');
+  if(!el||typeof Chart==='undefined')return;
+  const t=UCT_DRY[uctDryIdx]||newUCTDry();
+  const pts=computeUCTDryChartData(t);
+  if(window.__uctDryChart)window.__uctDryChart.destroy();
+  window.__uctDryChart=new Chart(el,{type:'line',data:{datasets:[{label:`Sample ${t.no||uctDryIdx+1}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'},grid:{color:'#eaebf2'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'},grid:{color:'#eaebf2'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||uctDryIdx+1}`}}}});
 }
-
-function renderUCTChartImage(t, w=640, h=360){
-  const tmp = document.createElement('canvas');
-  tmp.width = w; tmp.height = h;
-  const {pts, su} = computeUCTChartData(t);
-  const ch = new Chart(tmp, {
-    type:'line',
-    data:{datasets:[
-      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
-       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
-       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
-      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
-       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
-       borderColor:'#ff0000', backgroundColor:'#ff0000'}
-    ]},
-    options:{
-      responsive:false, animation:false, devicePixelRatio:2,
-      scales:{
-        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}},
-        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}}
-      },
-      plugins:{
-        legend:{position:'bottom'},
-        title:{display:true, text:`UNCONFINED COMPRESSION TEST — Sample ${t.no||'-'}`}
-      }
-    }
-  });
-  const dataUrl = tmp.toDataURL('image/png');
-  ch.destroy();
-  return dataUrl;
+function renderUCTDryChartImage(t,w=640,h=360){
+  const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h;
+  const pts=computeUCTDryChartData(t);
+  if(!pts.length){const ctx=tmp.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#666';ctx.font='16px Arial';ctx.textAlign='center';ctx.fillText(`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'}`,w/2,30);ctx.font='13px Arial';ctx.fillText('No chart data',w/2,h/2);return tmp.toDataURL('image/png');}
+  const ch=new Chart(tmp,{type:'line',data:{datasets:[{label:`Sample ${t.no||'-'}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'}]},options:{responsive:false,animation:false,devicePixelRatio:2,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'}`}}}});
+  const dataUrl=tmp.toDataURL('image/png');ch.destroy();return dataUrl;
 }
-
-/* =====================================================================
-   CHART
-   ===================================================================== */
-let chart=null;
-const PALETTE = ['#3845a8','#52b996','#e79c9c','#e8cd8d','#9aa1d0','#82d3b6','#b58fbf','#d98f5a'];
-
-function buildChart(){
-  const ctx = document.getElementById('gsdChart');
-  if(!ctx || typeof Chart==='undefined') return;
-  const datasets = SV.map((s,i)=>{
-    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
-                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
-    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
-            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:4};
-  }).filter(d=>d.data.length);
-
-  if(chart) chart.destroy();
-  chart = new Chart(ctx,{
-    type:'line',
-    data:{datasets},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}, grid:{color:'#eaebf2'}},
-        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}, grid:{color:'#eaebf2'}}
-      },
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
-    }
-  });
-}
-
-function renderGSDChartImage(w=640, h=360){
-  const tmp = document.createElement('canvas');
-  tmp.width = w; tmp.height = h;
-  const datasets = SV.map((s,i)=>{
-    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
-                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
-    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
-            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:3};
-  }).filter(d=>d.data.length);
-  if(!datasets.length) return null;
-  const ch = new Chart(tmp,{
-    type:'line',
-    data:{datasets},
-    options:{
-      responsive:false, animation:false, devicePixelRatio:2,
-      scales:{
-        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}},
-        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}}
-      },
-      plugins:{legend:{position:'bottom'}, title:{display:true,text:'GRAIN SIZE DISTRIBUTION CURVE'}}
-    }
-  });
-  const dataUrl = tmp.toDataURL('image/png');
-  ch.destroy();
-  return dataUrl;
-}
-const IMG = {uw:[], sv:[], att:[], uct:[]};
+const IMG={uw:[],sv:[],att:[],uct:[],uctDry:[]};
 function bindDrop(dzId, inputId, prevId, bucket){
   const dz = document.getElementById(dzId), fi = document.getElementById(inputId);
   dz.addEventListener('click', ()=>fi.click());
@@ -1799,6 +1777,18 @@ const UCT_SCHEMA = {
         q:{type:"NUMBER", description:"Load Dial Q (x0.0001in) actually read for that row"}
       }, required:["r","q"] } }
   }
+};
+
+const UCT_DRY_SCHEMA = {
+  type:"ARRAY",
+  description:"Exactly 3 specimen objects from the three side-by-side specimens in the uploaded Unconfined Compression Test (Dry Mixed) form. Preserve blank/unreadable fields as null. Read raw values only; do not calculate derived values.",
+  items:{type:"OBJECT",properties:{
+    no:{type:"STRING",nullable:true}, depth:{type:"STRING",nullable:true}, soilType:{type:"STRING",nullable:true}, cementContent:{type:"NUMBER",nullable:true}, curingAge:{type:"NUMBER",nullable:true}, strainRate:{type:"STRING",nullable:true},
+    K:{type:"NUMBER",nullable:true}, H:{type:"STRING",nullable:true}, D:{type:"STRING",nullable:true}, soilWeight:{type:"STRING",nullable:true},
+    cont:{type:"STRING",nullable:true}, b:{type:"STRING",nullable:true}, c:{type:"STRING",nullable:true}, a:{type:"STRING",nullable:true},
+    showStep:{type:"INTEGER",nullable:true},
+    readings:{type:"ARRAY",items:{type:"OBJECT",properties:{r:{type:"NUMBER"},q:{type:"NUMBER"}},required:["r","q"]}}
+  },required:["readings"]}
 };
 
 async function runOcrUW(){
@@ -2155,6 +2145,85 @@ CRITICAL COLUMN ALIGNMENT:
   }
 }
 
+async function runOcrUCTDry(){
+  if(!IMG.uctDry || !IMG.uctDry.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
+  if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+  Swal.fire({title:'กำลังอ่านค่าด้วย AI...',text:'UNCONFINED COMPRESSION TEST (DRY MIXED) — แยกอ่าน 3 ตัวอย่าง',allowOutsideClick:false,didOpen:()=>Swal.showLoading()});
+  try{
+    const src=IMG.uctDry[0]?.data;
+    if(!src) throw new Error('ไม่พบรูป Dry Mixed');
+    const probe=await new Promise((resolve,reject)=>{
+      const im=new Image();
+      im.onload=()=>resolve({w:im.naturalWidth,h:im.naturalHeight});
+      im.onerror=()=>reject(new Error('ไม่สามารถเปิดรูป Dry Mixed ได้'));
+      im.src=src;
+    });
+
+    // The supplied form is one page with exactly three specimen blocks arranged
+    // left-to-right. Crop each block before OCR so handwriting from adjacent
+    // specimens cannot be assigned to the wrong specimen.
+    const left=probe.w*0.085, right=probe.w*0.915, top=probe.h*0.025, bottom=probe.h*0.875;
+    const fullW=right-left, blockW=fullW/3, overlap=probe.w*0.012;
+    const crops=[];
+    for(let i=0;i<3;i++){
+      const x=Math.max(0,left+i*blockW-overlap);
+      const x2=Math.min(probe.w,left+(i+1)*blockW+overlap);
+      crops.push(await cropImageRectData(src,x,top,x2-x,bottom-top,1700));
+    }
+
+    const prompt=`You will receive THREE cropped images from one Unconfined Compression Test (Dry Mixed) sheet.
+Image 1 = specimen 1 (LEFT), Image 2 = specimen 2 (CENTER), Image 3 = specimen 3 (RIGHT).
+Return EXACTLY 3 objects in that order. Read ONLY the specimen shown in each image. Never transfer a value from one image/specimen to another. If Sample No. is blank, return null/empty; do NOT reject the specimen. The specimen is still valid when Sample No. is blank.
+
+RAW FIELDS TO READ:
+- no = Sample No.
+- depth = Depth
+- soilType = Soil Sample (if present)
+- cementContent = ปริมาณปูนซีเมนต์ / Cement Content (kg./m³), if present
+- curingAge = อายุบ่ม / Curing Age (days), if present
+- strainRate = Strain Rate, if present
+- K = Load Scale K, if present
+- H = Height, h
+- D = Diameter, D
+- soilWeight = the handwritten value on the row/field labelled "น้ำหนัก" in the SOIL SPECIMEN MEASUREMENTS block. This is an INPUT and must be mapped to Weight of Soil. Do NOT derive it from the container values.
+- cont = Container No.
+- a = Wt. Can / Weight of Container
+- b = Can + Wet Soil / Wet Soil + Container
+- c = Can + Dry Soil / Dry Soil + Container
+- readings = each printed Deformation Dial R paired with the handwritten Load Dial Q.
+
+CRITICAL MAPPING:
+1. The handwritten value labelled "น้ำหนัก" near Height and Diameter is soilWeight. It is NOT Wt. Can and is NOT soilSplitFormer/splitFormer.
+2. Wt. Can goes ONLY to a / Weight of Container.
+3. Can + Wet Soil goes ONLY to b / Wet Soil + Container.
+4. Can + Dry Soil goes ONLY to c / Dry Soil + Container.
+5. The printed left column in the deformation table is R. The handwritten number beside it is Q. NEVER swap R and Q.
+6. Keep the specimen boundaries exactly as shown. Image 1, 2, 3 are separate specimens.
+7. Do not calculate Weight of Water, Weight of Dry Soil, Water Content, unit weight, Area, Volume, qu or Su.
+8. Preserve the RAW handwritten number exactly as visible, including decimal point and number of decimal places. Do NOT round, pad with .0/.00, remove trailing zeros, or convert an integer to a decimal. For example, 91.62 must remain "91.62", 44.57 must remain "44.57", and 150 must remain "150". If unreadable or blank, return null.
+9. Read R > 320 too if visible, including the right-hand columns of the form (printed R = 340, 360, ...) paired with their handwritten Load. Return every readable pair; the program will compress excess readings later. Do not invent rows.
+10. showStep: only when this specimen has readable readings beyond R=320 (R=340, 360, ... in the right-hand columns), choose the R step used to show the data from R=340 onward: 20, 30 or 40. Pick the smallest step that keeps the whole table within 32 rows (R=0,20,...,300 use 16 rows, so at most 16 rows remain). Return null when there is no reading beyond R=320.
+11. Return JSON only.`;
+
+    const arr=await callGemini(crops.map(data=>({data})),prompt,6144,UCT_DRY_SCHEMA,'UCT-Dry-Mixed');
+    if(!Array.isArray(arr)||arr.length<3) throw new Error('OCR ต้องอ่านได้ครบ 3 ตัวอย่าง (ซ้าย → กลาง → ขวา) กรุณาตรวจสอบรูปภาพแล้วลองใหม่');
+
+    const out=[newUCTDry(),newUCTDry(),newUCTDry()];
+    for(let i=0;i<3;i++){
+      const o=arr[i]||{}; const t=out[i];
+      ['no','depth','soilType','cementContent','curingAge','strainRate','K','H','D','soilWeight','cont','b','c','a'].forEach(k=>{
+        if(o[k]!==null&&o[k]!==undefined) t[k]=(k==='H'||k==='D'||k==='soilWeight'||k==='a'||k==='b'||k==='c'||k==='depth') ? preserveUCTDryRaw(o[k]) : o[k];
+      });
+      applyUCTDryReadings(t,o.readings||[],o.showStep);
+    }
+    UCT_DRY=out; uctDryIdx=0; renderUCTDry(); scheduleSaveState(); Swal.close();
+    toast(gemUsageToast(arr.__gemUsage,'อ่านข้อมูล Dry Mixed สำเร็จ 3 ตัวอย่าง — ตรวจสอบ Mapping น้ำหนักและ Wt.Can แล้ว'),'success');
+  }catch(err){
+    if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
+    Swal.fire({icon:'error',title:'อ่านค่า Dry Mixed ไม่สำเร็จ',text:String(err.message||err)});
+  }
+}
+
 async function runOcrUCT(){
   if(!IMG.uct.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
@@ -2233,6 +2302,46 @@ function xImage(wb, ws, dataUrl, r, colSpan, widthPx=640, heightPx=360){
   const imgId = wb.addImage({base64, extension:'png'});
   ws.addImage(imgId, {tl:{col:0, row:r-1}, ext:{width:widthPx, height:heightPx}});
   return r + Math.ceil(heightPx/20) + 1; // เว้นแถวให้พอกับความสูงรูป (ประมาณ 20px/แถว)
+}
+
+async function exportUCTDryExcel(){
+  if(typeof ExcelJS==='undefined'||!ExcelJS.Workbook)return Swal.fire({icon:'error',title:'ไม่พบ ExcelJS',text:'ไม่สามารถโหลดไลบรารี ExcelJS ได้'});
+  Swal.fire({title:'กำลังสร้าง Excel หมวด 7...',allowOutsideClick:false,didOpen:()=>Swal.showLoading()});
+  try{
+    const H=header();const wb=new ExcelJS.Workbook();wb.creator='Ten Consultants Co., Ltd.';wb.calcProperties.fullCalcOnLoad=true;wb.calcProperties.forceFullCalc=true;wb.calcProperties.calcMode='auto';
+    const formulaCell=(formula,result=null)=>({formula:String(formula||'').replace(/^=/,''),result});
+    UCT_DRY.forEach((t,ti)=>{
+      const ws=wb.addWorksheet(`Sample ${ti+1}`.slice(0,31),{views:[{showGridLines:false}]});
+      [26,16,26,16,26,16].forEach((w,i)=>ws.getColumn(i+1).width=w);let r=1;
+      r=xRow(ws,r,[{v:'UNCONFINED COMPRESSION TEST (DRY MIXED)',span:6,font:{bold:true,size:14,color:{argb:'FF0F185A'}}}]);
+      r=xRow(ws,r,[{v:`PROJECT: ${H.project}   |   LOCATION: ${H.location}   |   BORING NO.: ${H.boring}`,span:6}]);
+      const sum=calcUCTDrySummary(t);const dd=dryDims(t);r++;
+      r=xRow(ws,r,[{v:`ตัวอย่างที่ ${ti+1} — Sample ${t.no||''}`,span:6,fill:X_HDR,font:X_WHITE_BOLD}]);
+      r=xRow(ws,r,[{v:'Sample No.',font:{bold:true}},{v:t.no??''},{v:'Depth (m.)',font:{bold:true}},{v:t.depth??''},{v:'Soil Sample',font:{bold:true}},{v:t.soilType??''}]);
+      r=xRow(ws,r,[{v:'Cement Content (kg./m³)',font:{bold:true}},{v:t.cementContent??''},{v:'Curing Age (days)',font:{bold:true}},{v:t.curingAge??''},{v:'Strain Rate',font:{bold:true}},{v:t.strainRate??''}]);
+      const kRow=r;r=xRow(ws,r,[{v:'Load Scale K',font:{bold:true}},{v:num(t.K)??0.0653},{v:''},{v:''},{v:''},{v:''}]);
+      r=xRow(ws,r,[{v:'SOIL SPECIMEN MEASUREMENTS',span:6,fill:X_SUB,font:X_WHITE_BOLD}]);
+      const areaRow=r;r=xRow(ws,r,[{v:'Height, h (cm.)'},{v:dryRnd(dd.H,3)??'',fill:X_INPUT,align:'center'},{v:'Diameter, D (cm.)'},{v:dryRnd(dd.D,3)??'',fill:X_INPUT,align:'center'},{v:'Area, A (cm²)'},{v:sum.area??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);
+      const volRow=r;r=xRow(ws,r,[{v:'Volume, V=A.h (cm³)'},{v:sum.vol??'',fill:X_CALC,font:X_CALC_FONT,align:'center'},{v:'Weight of Soil (g)'},{v:num(t.soilWeight)??'',fill:X_INPUT,align:'center'},{v:'',},{v:''}]);
+      const wtRow=r;r=xRow(ws,r,[{v:'Wet Unit Weight, γt (t/m³)'},{v:sum.gt??'',fill:X_CALC,font:X_CALC_FONT,align:'center'},{v:'Dry Unit Weight, γd (t/m³)'},{v:sum.gd??'',fill:X_CALC,font:X_CALC_FONT,align:'center'},{v:'',},{v:''}]);
+      r=xRow(ws,r,[{v:'WATER CONTENT DETERMINATION',span:6,fill:X_SUB,font:X_WHITE_BOLD}]);
+      const wetRow=r;r=xRow(ws,r,[{v:'Container No.'},{v:t.cont??'',fill:X_INPUT,align:'center'},{v:'Wt. Wet Soil+Container (g)'},{v:num(t.b)??'',fill:X_INPUT,align:'center'},{v:'Wt. Dry Soil+Container (g)'},{v:num(t.c)??'',fill:X_INPUT,align:'center'}]);
+      const dryRow=r;r=xRow(ws,r,[{v:'Weight of Container (g)'},{v:num(t.a)??'',fill:X_INPUT,align:'center'},{v:'Weight of Water (g)'},{v:sum.water??'',fill:X_CALC,font:X_CALC_FONT,align:'center'},{v:'Weight of Dry Soil (g)'},{v:sum.drySoil??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);
+      const wcRow=r;r=xRow(ws,r,[{v:'Water Content, w (%)',font:{bold:true}},{v:sum.wc??'',span:5,fill:X_CALC,font:X_CALC_FONT,align:'center'}]);
+      ws.getCell(areaRow,6).value=formulaCell(`=IF(D${areaRow}="","",ROUND(D${areaRow}^2*3.14285/4,3))`,sum.area);
+      ws.getCell(volRow,2).value=formulaCell(`=IF(OR(B${areaRow}="",F${areaRow}=""),"",ROUND(F${areaRow}*B${areaRow},2))`,sum.vol);
+      ws.getCell(wtRow,2).value=formulaCell(`=IF(OR(D${volRow}="",B${volRow}="",B${volRow}=0),"",ROUND(D${volRow}/B${volRow},2))`,sum.gt);
+      ws.getCell(wtRow,4).value=formulaCell(`=IF(OR(B${wtRow}="",B${wcRow}=""),"",ROUND(100*B${wtRow}/(100+B${wcRow}),2))`,sum.gd);
+      
+      ws.getCell(dryRow,4).value=formulaCell(`=IF(OR(D${wetRow}="",F${wetRow}=""),"",ROUND(D${wetRow}-F${wetRow},2))`,sum.water);
+      ws.getCell(dryRow,6).value=formulaCell(`=IF(OR(F${wetRow}="",B${dryRow}=""),"",ROUND(F${wetRow}-B${dryRow},2))`,sum.drySoil);
+      ws.getCell(wcRow,2).value=formulaCell(`=IF(OR(D${dryRow}="",F${dryRow}="",F${dryRow}=0),"",ROUND(D${dryRow}/F${dryRow}*100,2))`,sum.wc);
+      r++;r=xRow(ws,r,['Deformation Dial, R','Load Dial, Q','Axial Strain, E',"Corrected Area, A'",'Deviator Load, P','Deviator Stress'].map(v=>({v,fill:X_SUB,font:X_WHITE_BOLD,align:'center'})));
+      const first=r;dryRs(t).forEach((R,i)=>{if(!dryValidR(R))return;const er=r;const c=calcUCTDryRow(t,R,t.Q[i]);r=xRow(ws,r,[{v:R,align:'center'},{v:num(t.Q[i])??'',fill:X_INPUT,align:'center'},{v:formulaCell(`=IF(OR(B${areaRow}="",B${areaRow}=0,A${er}=""),"",ROUND((A${er}*0.01)/(10*B${areaRow}),4))`,c.strain),align:'center'},{v:formulaCell(`=IF(OR(F${areaRow}="",C${er}="",1-C${er}=0),"",ROUND(F${areaRow}/(1-C${er}),3))`,c.corrArea),align:'center'},{v:formulaCell(`=IF(OR(B${er}="",D${er}=""),"",ROUND(B${er}*$B$${kRow},3))`,c.load),align:'center'},{v:formulaCell(`=IF(OR(E${er}="",D${er}="",D${er}=0),"",ROUND(E${er}*10/D${er},2))`,c.stress),fill:X_CALC,font:X_CALC_FONT,align:'center'}]);});
+      const last=r-1;const quRow=r;r=xRow(ws,r,[{v:'Unconfined Compressive Strength (qu)',span:5,font:{bold:true}},{v:sum.qu??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);const suRow=r;r=xRow(ws,r,[{v:'Undrained Shear Strength (Su)',span:5,font:{bold:true}},{v:sum.su??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);ws.getCell(quRow,6).value=formulaCell(`=IFERROR(ROUND(MAX(F${first}:F${last}),2),"")`,sum.qu);ws.getCell(suRow,6).value=formulaCell(`=IF(F${quRow}="","",ROUND(F${quRow}/2,2))`,sum.su);r++;r=xImage(wb,ws,renderUCTDryChartImage(t),r,6);
+    });
+    const buf=await wb.xlsx.writeBuffer();const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Unconfined_Compression_Dry_Mixed.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);Swal.close();toast('Export Excel หมวด 7 สำเร็จ — 1 Sheet / 1 ตัวอย่าง','success');
+  }catch(err){console.error(err);Swal.fire({icon:'error',title:'Export หมวด 7 ไม่สำเร็จ',text:err.message||String(err)});}
 }
 
 async function exportExcel(){
@@ -2386,6 +2495,7 @@ async function exportExcel(){
         ws.getCell(factor,idx+2).value=formulaCell(`=IFERROR(IF(${col}${attRowMap.blows}=\"\",\"\",ROUND((${col}${attRowMap.blows}/25)^0.12,3)),\"\")`,calcAtterberg(s).factor);
         ws.getCell(LL,idx+2).value=formulaCell(`=IF(OR(${col}${wc}=\"\",${col}${factor}=\"\"),\"\",ROUND(${col}${wc}*${col}${factor},2))`,calcAtterberg(s).LL);
         ws.getCell(PI,idx+2).value=formulaCell(`=IF(${col}${LL}=\"\",\"\",ROUND(0.73*(${col}${LL}-20)+IF(${col}${adj}=\"\",0,${col}${adj}),2))`,calcAtterberg(s).PI);
+        ws.getCell(adj,idx+2).value=formulaCell(`=IF(${col}${wc}=\"\",\"\",IF(${col}${wc}<=50,3,2))`,calcAtterberg(s).adjWater);
         ws.getCell(PL,idx+2).value=formulaCell(`=IF(OR(${col}${LL}=\"\",${col}${PI}=\"\"),\"\",ROUND(${col}${LL}-${col}${PI},2))`,calcAtterberg(s).PL);
       });
     }
@@ -2546,6 +2656,7 @@ function switchTab(name){
   });
   if(name==='chart') buildChart();
   if(name==='uct') buildUCTChart();
+  if(name==='uctdry') buildUCTDryChart();
 }
 
 document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
@@ -2644,6 +2755,14 @@ function clearAllATT(){
     toast("ล้างข้อมูล Atterberg's Limits แล้ว");
   });
 }
+function clearAllUCTDry(){
+  Swal.fire({icon:'warning',title:'ล้างข้อมูล Unconfined Compression Test (Dry Mixed) ทั้งหมด?',text:'จะล้างทั้ง 3 ตัวอย่างและรูปภาพที่อัปโหลด',showCancelButton:true,confirmButtonText:'ล้างข้อมูล',confirmButtonColor:'#e79c9c',cancelButtonText:'ยกเลิก'}).then(r=>{
+    if(!r.isConfirmed)return;
+    UCT_DRY=[newUCTDry(),newUCTDry(),newUCTDry()];uctDryIdx=0;IMG.uctDry=[];
+    document.getElementById('fileUCTDry').value='';renderPrev('prevUCTDryImg','uctDry');renderUCTDry();scheduleSaveState();toast('ล้างข้อมูล Dry Mixed แล้ว');
+  });
+}
+
 function clearAllUCT(){
   Swal.fire({
     icon:'warning', title:'ล้างข้อมูล Unconfined Compression Test ทั้งหมด?',
@@ -2704,6 +2823,12 @@ function bootApp(){
     if(UCT.length>1){ UCT.splice(uctIdx,1); if(uctIdx>=UCT.length) uctIdx=UCT.length-1; renderUCT(); }
   };
   document.getElementById('clrUCT').onclick = clearAllUCT;
+  document.getElementById('prevUCTDry').onclick = ()=>{ if(uctDryIdx>0){uctDryIdx--;renderUCTDry();} };
+  document.getElementById('nextUCTDry').onclick = ()=>{ if(uctDryIdx<UCT_DRY.length-1){uctDryIdx++;renderUCTDry();} };
+  document.getElementById('addUCTDry').onclick = ()=>{ UCT_DRY.push(newUCTDry());uctDryIdx=UCT_DRY.length-1;renderUCTDry();scheduleSaveState(); };
+  document.getElementById('delUCTDry').onclick = ()=>{ if(UCT_DRY.length>1){UCT_DRY.splice(uctDryIdx,1);if(uctDryIdx>=UCT_DRY.length)uctDryIdx=UCT_DRY.length-1;renderUCTDry();scheduleSaveState();} };
+  document.getElementById('clrUCTDry').onclick = clearAllUCTDry;
+  document.getElementById('exportUCTDry').onclick = exportUCTDryExcel;
   document.getElementById('addSUM').onclick = ()=>{ SUM.push({no:'',from:'',to:'',wn:'',ll:'',pl:'',g4:'',g10:'',g40:'',g100:'',g200:'',uscs:'',pp:'',fv:'',qu:'',gt:'',sptN:''}); renderSUM(); };
   document.getElementById('delSUM').onclick = ()=>{ if(SUM.length>1){SUM.pop(); renderSUM();} };
   document.getElementById('clrSUM').onclick = ()=>{
@@ -2726,12 +2851,16 @@ function bootApp(){
   bindDrop('dzSV','fileSV','prevSV','sv');
   bindDrop('dzATT','fileATT','prevATT','att');
   bindDrop('dzUCT','fileUCT','prevUCTImg','uct');
+  bindDrop('dzUCTDry','fileUCTDry','prevUCTDryImg','uctDry');
   document.getElementById('ocrUW').addEventListener('click', runOcrUW);
   document.getElementById('ocrSV').addEventListener('click', runOcrSV);
   document.getElementById('ocrATT').addEventListener('click', runOcrATT);
   document.getElementById('ocrUCT').addEventListener('click', runOcrUCT);
+  document.getElementById('ocrUCTDry').addEventListener('click', runOcrUCTDry);
 
   loadAppState();
+  // หมวด 7 (Dry Mixed) ว่างทุกครั้งที่เปิดโปรแกรมใหม่
+  UCT_DRY=[newUCTDry(),newUCTDry(),newUCTDry()]; uctDryIdx=0; IMG.uctDry=[];
   // Start with a completely blank Summary unless the current user has saved real Summary data.
   if(!summaryHasData(SUM)) SUM=cloneDefaultSummary();
   renderSUM();
@@ -2743,6 +2872,7 @@ function bootApp(){
 
   switchTab('uw');
   renderUW();
+  renderUCTDry();
   // Restore the original Html_V13 linkage: Sieve sample a/b/c are linked from Unit Weight
   // by container/dish (or sample number), while retained sieve values remain untouched.
   syncSieveFromUW(true);
