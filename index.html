@@ -424,6 +424,11 @@ tailwind.config = {
         <h3 class="text-sm font-bold text-[#1d2772] mb-3">Deviator Stress – Axial Strain Curve (Dry Mixed)</h3>
         <div class="h-[360px]"><canvas id="uctDryChart"></canvas></div>
       </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">Deviator Stress – Axial Strain Curve (Dry Mixed) — Smoothed Curve</h3>
+        <p class="text-[11px] text-slate-400 mb-3">เส้นโค้งปรับให้เรียบจากข้อมูลจริง (ค่าสูงสุด qu ใช้ค่าจริง ไม่ถูกปรับ)</p>
+        <div class="h-[360px]"><canvas id="uctDryChartSmooth"></canvas></div>
+      </div>
     </div>
   </div>
 </main>
@@ -1675,7 +1680,73 @@ function refreshUCTDryCalcOnly(){
   }
 }
 function computeUCTDryChartData(t){const pts=dryRs(t).map((R,i)=>{if(!dryValidR(R))return null;const q=num(t.Q[i]);if(q===null)return null;const c=calcUCTDryRow(t,R,q);return {x:dryRnd(c.strain*100,2),y:c.stress};}).filter(Boolean);return pts;}
+/* ---- Module 7: Smoothed curve (same style as original chart; plotted values simulated, peak = measured) ---- */
+function smoothDryPoints(raw){
+  // raw: [{x,y}] เรียงตาม x  → คืนค่า y ที่ปรับให้เรียบ ณ ตำแหน่ง x เดิม (ค่าสูงสุดคงเดิม)
+  const n=raw.length; if(n<3) return raw.map(p=>({x:p.x,y:p.y}));
+  const X=raw.map(p=>p.x), Y=raw.map(p=>p.y);
+  let pi=0; Y.forEach((v,i)=>{ if(v>Y[pi]) pi=i; });
+  const peak=Y[pi];
+  const h=Math.max(1e-6,1.8*(X[n-1]-X[0])/(n-1));
+  // Local-linear regression แบบ Gaussian: ไม่ดึงเส้นตรงให้ต่ำลง และทำให้ช่วงหักมุมโค้งมน
+  function pass(src){
+    return src.map((_,i)=>{
+      let sw=0,sx=0,sy=0,sxx=0,sxy=0;
+      for(let j=0;j<n;j++){
+        const d=(X[j]-X[i])/h; const w=Math.exp(-0.5*d*d); if(w<1e-4) continue;
+        sw+=w; sx+=w*X[j]; sy+=w*src[j]; sxx+=w*X[j]*X[j]; sxy+=w*X[j]*src[j];
+      }
+      const den=sw*sxx-sx*sx;
+      if(Math.abs(den)<1e-12) return sy/sw;
+      const slope=(sw*sxy-sx*sy)/den, icpt=(sy-slope*sx)/sw;
+      return icpt+slope*X[i];
+    });
+  }
+  let y=pass(pass(Y));
+  // ตรึงจุดเริ่มต้น (0,0) และปรับบริเวณใกล้ peak ให้ต่อเนื่องแบบนุ่มนวลไปหาค่า peak จริง
+  if(X[0]===0&&Y[0]===0) y[0]=0;
+  const delta=peak-y[pi], K=4;
+  for(let d=0;d<=K;d++){
+    const w=0.5*(1+Math.cos(Math.PI*d/(K+1)));
+    if(pi-d>=0&&!(pi-d===0&&y[0]===0)) y[pi-d]+=delta*w;
+    if(d>0&&pi+d<n) y[pi+d]+=delta*w;
+  }
+  y[pi]=peak;
+  for(let i=1;i<=pi;i++) y[i]=Math.min(peak,Math.max(y[i],y[i-1]));
+  for(let i=pi+1;i<n;i++) y[i]=Math.max(0,Math.min(peak,y[i],y[i-1]));
+  return X.map((x,i)=>({x:x,y:dryRnd(y[i],2)}));
+}
+function computeUCTDrySmoothData(t){
+  const raw=computeUCTDryChartData(t).filter(p=>p&&isFinite(p.x)&&isFinite(p.y)).sort((a,b)=>a.x-b.x);
+  return {pts:smoothDryPoints(raw),peak:null};
+}
+function uctDrySmoothConfig(t,animate,forImage){
+  const {pts}=computeUCTDrySmoothData(t);
+  const su=calcUCTDrySummary(t).su;
+  const title=`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'} (Smoothed)`;
+  return {type:'line',data:{datasets:[
+    {label:`Sample ${t.no||'-'}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',cubicInterpolationMode:'monotone',tension:.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'},
+    {label:'Su',data:su!==null?[{x:0,y:su}]:[],parsing:false,showLine:false,pointStyle:'line',rotation:90,pointRadius:8,borderWidth:3,borderColor:'#ff0000',backgroundColor:'#ff0000'}
+  ]},options:Object.assign({responsive:true,maintainAspectRatio:false,
+    scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'},grid:{color:'#eaebf2'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'},grid:{color:'#eaebf2'}}},
+    plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:title}}},
+    forImage?{responsive:false,animation:false,devicePixelRatio:2}:{})};
+}
+function buildUCTDrySmoothChart(){
+  const el=document.getElementById('uctDryChartSmooth');
+  if(!el||typeof Chart==='undefined')return;
+  const t=UCT_DRY[uctDryIdx]||newUCTDry();
+  if(window.__uctDryChartSmooth)window.__uctDryChartSmooth.destroy();
+  window.__uctDryChartSmooth=new Chart(el,uctDrySmoothConfig(t,false,false));
+}
+function renderUCTDrySmoothChartImage(t,w=640,h=360){
+  const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h;
+  if(!computeUCTDrySmoothData(t).pts.length){const ctx=tmp.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#666';ctx.font='16px Arial';ctx.textAlign='center';ctx.fillText(`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'} (Smoothed)`,w/2,30);ctx.font='13px Arial';ctx.fillText('No chart data',w/2,h/2);return tmp.toDataURL('image/png');}
+  const ch=new Chart(tmp,uctDrySmoothConfig(t,false,true));
+  const dataUrl=tmp.toDataURL('image/png');ch.destroy();return dataUrl;
+}
 function buildUCTDryChart(){
+  buildUCTDrySmoothChart();
   const el=document.getElementById('uctDryChart');
   if(!el||typeof Chart==='undefined')return;
   const t=UCT_DRY[uctDryIdx]||newUCTDry();
@@ -2597,7 +2668,7 @@ async function exportUCTDryExcel(){
       ws.getCell(wcRow,2).value=formulaCell(`=IF(OR(D${dryRow}="",F${dryRow}="",F${dryRow}=0),"",ROUND(D${dryRow}/F${dryRow}*100,2))`,sum.wc);
       r++;r=xRow(ws,r,['Deformation Dial, R','Load Dial, Q','Axial Strain, E',"Corrected Area, A'",'Deviator Load, P','Deviator Stress'].map(v=>({v,fill:X_SUB,font:X_WHITE_BOLD,align:'center'})));
       const first=r;dryRs(t).forEach((R,i)=>{if(!dryValidR(R))return;const er=r;const c=calcUCTDryRow(t,R,t.Q[i]);r=xRow(ws,r,[{v:R,align:'center'},{v:num(t.Q[i])??'',fill:X_INPUT,align:'center'},{v:formulaCell(`=IF(OR(B${areaRow}="",B${areaRow}=0,A${er}=""),"",ROUND((A${er}*0.01)/(10*B${areaRow}),4))`,c.strain),align:'center'},{v:formulaCell(`=IF(OR(F${areaRow}="",C${er}="",1-C${er}=0),"",ROUND(F${areaRow}/(1-C${er}),3))`,c.corrArea),align:'center'},{v:formulaCell(`=IF(OR(B${er}="",D${er}=""),"",ROUND(B${er}*$B$${kRow},3))`,c.load),align:'center'},{v:formulaCell(`=IF(OR(E${er}="",D${er}="",D${er}=0),"",ROUND(E${er}*10/D${er},2))`,c.stress),fill:X_CALC,font:X_CALC_FONT,align:'center'}]);});
-      const last=r-1;const quRow=r;r=xRow(ws,r,[{v:'Unconfined Compressive Strength (qu)',span:5,font:{bold:true}},{v:sum.qu??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);const suRow=r;r=xRow(ws,r,[{v:'Undrained Shear Strength (Su)',span:5,font:{bold:true}},{v:sum.su??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);ws.getCell(quRow,6).value=formulaCell(`=IFERROR(ROUND(MAX(F${first}:F${last}),2),"")`,sum.qu);ws.getCell(suRow,6).value=formulaCell(`=IF(F${quRow}="","",ROUND(F${quRow}/2,2))`,sum.su);r++;r=xImage(wb,ws,renderUCTDryChartImage(t),r,6);
+      const last=r-1;const quRow=r;r=xRow(ws,r,[{v:'Unconfined Compressive Strength (qu)',span:5,font:{bold:true}},{v:sum.qu??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);const suRow=r;r=xRow(ws,r,[{v:'Undrained Shear Strength (Su)',span:5,font:{bold:true}},{v:sum.su??'',fill:X_CALC,font:X_CALC_FONT,align:'center'}]);ws.getCell(quRow,6).value=formulaCell(`=IFERROR(ROUND(MAX(F${first}:F${last}),2),"")`,sum.qu);ws.getCell(suRow,6).value=formulaCell(`=IF(F${quRow}="","",ROUND(F${quRow}/2,2))`,sum.su);r++;r=xImage(wb,ws,renderUCTDryChartImage(t),r,6);r=xImage(wb,ws,renderUCTDrySmoothChartImage(t),r,6);
     });
     const buf=await wb.xlsx.writeBuffer();const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Unconfined_Compression_Dry_Mixed.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);Swal.close();toast('Export Excel หมวด 7 สำเร็จ — 1 Sheet / 1 ตัวอย่าง','success');
   }catch(err){console.error(err);Swal.fire({icon:'error',title:'Export หมวด 7 ไม่สำเร็จ',text:err.message||String(err)});}
