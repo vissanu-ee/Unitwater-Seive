@@ -1382,6 +1382,263 @@ function calcRow(label, val, unit){
     <span class="calc-cell rounded px-2 py-0.5 font-semibold">${show(val)} <span class="text-[10px] font-normal opacity-70">${unit||''}</span></span></div>`;
 }
 
+/* ===== หมวด 5 (UCT) และ Grain Size Curve: ฟังก์ชัน render/chart (กู้คืนจาก v33) ===== */
+function renderUCT(){
+  if(uctIdx>=UCT.length) uctIdx = UCT.length-1;
+  if(uctIdx<0) uctIdx = 0;
+  const t = UCT[uctIdx];
+  document.getElementById('uctPageLabel').textContent = `ตัวอย่างที่ ${uctIdx+1} / ${UCT.length} — คำนวณหน้าละ 1 หลุมเจาะดินเท่านั้น`;
+
+  document.getElementById('uctInfoBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">ข้อมูลตัวอย่าง</h3>
+    ${infoRow('Sample No.','uctNo',t.no)}
+    ${infoRow('Depth','uctDepth',t.depth,'m.')}
+    ${infoRow('Soil Sample','uctSoilType',t.soilType)}
+    ${infoRow('Strain Rate','uctStrainRate',t.strainRate,'mm/min.')}
+    ${infoRow('Load Scale K (=K×Q)','uctK',t.K,'kg./div.')}`;
+
+  document.getElementById('uctSpecBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">SOIL SPECIMEN MEASUREMENTS</h3>
+    ${infoRow('Height, h','uctH',t.H,'cm.')}
+    ${infoRow('Diameter, D','uctD',t.D,'cm.')}
+    ${infoRow('Wt. Soil+Split Former','uctSoilSplitFormer',t.soilSplitFormer,'g')}
+    ${infoRow('Wt. Split Former','uctSplitFormer',t.splitFormer,'g')}`;
+
+  document.getElementById('uctWaterBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-1">WATER CONTENT DETERMINATION</h3>
+    ${infoRow('Container No.','uctCont',t.cont)}
+    ${infoRow('Wet Soil + Container','uctB',t.b,'g')}
+    ${infoRow('Dry Soil + Container','uctC',t.c,'g')}
+    ${infoRow('Weight of Container','uctA',t.a,'g')}`;
+
+  const sum = calcUCTSummary(t);
+  document.getElementById('uctResultBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
+    <div class="space-y-1.5 text-xs">
+      ${calcRow('Area, A', sum.area, 'cm²')}
+      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
+      ${calcRow('Weight of Soil, W', sum.W, 'g')}
+      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
+      ${calcRow('Weight of Water', sum.water, 'g')}
+      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
+      ${calcRow('Water Content, w', sum.wc, '%')}
+      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
+      <div class="pt-2 mt-2 border-t space-y-1.5">
+        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
+        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
+      </div>
+    </div>`;
+
+  let html = `<thead><tr class="bg-[#0f185a] text-white text-[11px]">
+    <th class="px-2 py-2">Deformation<br>Dial R<br>(x0.01 mm)</th>
+    <th class="px-2 py-2">Load Dial, Q<br>(x0.0001 in.)</th>
+    <th class="px-2 py-2">Axial Strain<br>E=Rx10⁻²/10h</th>
+    <th class="px-2 py-2">Corrected Area<br>A'=A/(1-E) (cm²)</th>
+    <th class="px-2 py-2">Deviator Load<br>P=Q.K (kg)</th>
+    <th class="px-2 py-2">Deviator Stress<br>σ1-σ3=10P/A' (t/m²)</th>
+  </tr></thead><tbody>`;
+  UCT_R.forEach((R,i)=>{
+    const c = calcUCTRow(t,R,t.Q[i]);
+    html += `<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}">
+      <td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td>
+      <td class="tbl-cell input-cell px-1 py-1"><input data-row="${i}" value="${show(t.Q[i])}"></td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td>
+      <td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td>
+      <td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td>
+    </tr>`;
+  });
+  html += `</tbody>`;
+  const tbl = document.getElementById('tblUCT');
+  tbl.innerHTML = html;
+
+  // bind info-box inputs
+  const bind = (id,obj,key,onchange)=>{
+    const el = document.getElementById(id);
+    el.addEventListener('input', e=>{ obj[key]=e.target.value; if(onchange) onchange(); });
+  };
+  bind('uctNo',t,'no'); bind('uctDepth',t,'depth'); bind('uctSoilType',t,'soilType');
+  bind('uctStrainRate',t,'strainRate');
+  bind('uctK',t,'K',()=>{ refreshUCTCalcOnly(); });
+  bind('uctH',t,'H',()=>{ refreshUCTCalcOnly(); });
+  bind('uctD',t,'D',()=>{ refreshUCTCalcOnly(); });
+  bind('uctSoilSplitFormer',t,'soilSplitFormer'); bind('uctSplitFormer',t,'splitFormer');
+  bind('uctCont',t,'cont');
+  bind('uctB',t,'b',()=>{ refreshUCTCalcOnly(); });
+  bind('uctC',t,'c',()=>{ refreshUCTCalcOnly(); });
+  bind('uctA',t,'a',()=>{ refreshUCTCalcOnly(); });
+
+  tbl.querySelectorAll('input[data-row]').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      t.Q[e.target.dataset.row] = e.target.value;
+      refreshUCTCalcOnly();
+    });
+  });
+
+  buildUCTChart();
+}
+
+function refreshUCTCalcOnly(){
+  const t = UCT[uctIdx];
+  const sum = calcUCTSummary(t);
+  document.getElementById('uctResultBox').innerHTML = `
+    <h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3>
+    <div class="space-y-1.5 text-xs">
+      ${calcRow('Area, A', sum.area, 'cm²')}
+      ${calcRow('Volume, V=A.h', sum.vol, 'cm³')}
+      ${calcRow('Weight of Soil, W', sum.W, 'g')}
+      ${calcRow('Wet Unit Weight, γt', sum.gt, 't/m³')}
+      ${calcRow('Weight of Water', sum.water, 'g')}
+      ${calcRow('Weight of Dry Soil', sum.drySoil, 'g')}
+      ${calcRow('Water Content, w', sum.wc, '%')}
+      ${calcRow('Dry Unit Weight, γd', sum.gd, 't/m³')}
+      <div class="pt-2 mt-2 border-t space-y-1.5">
+        ${calcRow('Unconfined Compressive Strength, qu', sum.qu, 't/m²')}
+        ${calcRow('Undrained Shear Strength, Su', sum.su, 't/m²')}
+      </div>
+    </div>`;
+  const tbl = document.getElementById('tblUCT');
+  const rows = tbl.querySelectorAll('tbody tr');
+  UCT_R.forEach((R,i)=>{
+    const c = calcUCTRow(t,R,t.Q[i]);
+    const cells = rows[i].querySelectorAll('td');
+    cells[2].textContent = show(c.strain);
+    cells[3].textContent = show(c.corrArea);
+    cells[4].textContent = show(c.load);
+    cells[5].textContent = show(c.stress);
+  });
+  buildUCTChart();
+}
+
+let uctChart=null;
+function computeUCTChartData(t){
+  const pts = UCT_R.map((R,i)=>{
+    const qRaw = t.Q[i];
+    if(qRaw===''||qRaw===null||qRaw===undefined) return null; // ยังไม่ได้กรอกแถวนี้ ไม่ต้องพลอตจุด
+    const c = calcUCTRow(t,R,qRaw);
+    return (c.strain!==null && c.stress!==null) ? {x:r2(c.strain*100), y:c.stress} : null;
+  }).filter(p=>p);
+  const su = calcUCTSummary(t).su;
+  return {pts, su};
+}
+
+function buildUCTChart(){
+  const t = UCT[uctIdx];
+  const ctx = document.getElementById('uctChart');
+  const {pts, su} = computeUCTChartData(t);
+
+  if(uctChart) uctChart.destroy();
+  uctChart = new Chart(ctx,{
+    type:'line',
+    data:{datasets:[
+      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
+       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
+       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
+      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
+       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
+       borderColor:'#ff0000', backgroundColor:'#ff0000'}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}, grid:{color:'#eaebf2'}},
+        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}, grid:{color:'#eaebf2'}}
+      },
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
+    }
+
+  });
+}
+
+function renderUCTChartImage(t, w=640, h=360){
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const {pts, su} = computeUCTChartData(t);
+  const ch = new Chart(tmp, {
+    type:'line',
+    data:{datasets:[
+      {label:`Sample ${t.no||'-'}`, data:pts, borderColor:'#000080',
+       backgroundColor:'#000080', tension:.15, borderWidth:2, pointRadius:3,
+       pointBackgroundColor:'#000080', pointBorderColor:'#000080'},
+      {label:'Su', data: su!==null ? [{x:0,y:su}] : [], showLine:false,
+       pointStyle:'line', rotation:90, pointRadius:8, borderWidth:3,
+       borderColor:'#ff0000', backgroundColor:'#ff0000'}
+    ]},
+    options:{
+      responsive:false, animation:false, devicePixelRatio:2,
+      scales:{
+        x:{type:'linear', title:{display:true,text:'Axial Strain, %'}},
+        y:{min:0, title:{display:true,text:'Deviator Stress, t/m²'}}
+      },
+      plugins:{
+        legend:{position:'bottom'},
+        title:{display:true, text:`UNCONFINED COMPRESSION TEST — Sample ${t.no||'-'}`}
+      }
+    }
+  });
+  const dataUrl = tmp.toDataURL('image/png');
+  ch.destroy();
+  return dataUrl;
+}
+
+/* =====================================================================
+   CHART
+   ===================================================================== */
+let chart=null;
+const PALETTE = ['#3845a8','#52b996','#e79c9c','#e8cd8d','#9aa1d0','#82d3b6','#b58fbf','#d98f5a'];
+
+function buildChart(){
+  const ctx = document.getElementById('gsdChart');
+  if(!ctx || typeof Chart==='undefined') return;
+  const datasets = SV.map((s,i)=>{
+    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
+                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
+    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
+            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:4};
+  }).filter(d=>d.data.length);
+
+  if(chart) chart.destroy();
+  chart = new Chart(ctx,{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}, grid:{color:'#eaebf2'}},
+        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}, grid:{color:'#eaebf2'}}
+      },
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}
+    }
+  });
+}
+
+function renderGSDChartImage(w=640, h=360){
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const datasets = SV.map((s,i)=>{
+    const pts = calcSieve(s).rows.filter(r=>r.i!==null && r.sieve!=='PAN')
+                 .map(r=>({x:r.mm, y:r.i})).sort((p,q)=>q.x-p.x);
+    return {label:`Sample ${s.no} (${s.dish})`, data:pts, borderColor:PALETTE[i%8],
+            backgroundColor:PALETTE[i%8], tension:.35, borderWidth:2, pointRadius:3};
+  }).filter(d=>d.data.length);
+  if(!datasets.length) return null;
+  const ch = new Chart(tmp,{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:false, animation:false, devicePixelRatio:2,
+      scales:{
+        x:{type:'logarithmic', reverse:true, title:{display:true,text:'Particle Size (mm)'}},
+        y:{min:0, max:100, title:{display:true,text:'Percent Finer by Weight (%)'}}
+      },
+      plugins:{legend:{position:'bottom'}, title:{display:true,text:'GRAIN SIZE DISTRIBUTION CURVE'}}
+    }
+  });
+  const dataUrl = tmp.toDataURL('image/png');
+  ch.destroy();
+  return dataUrl;
+}
+
 function preserveUCTDryRaw(v){
   if(v===null||v===undefined) return v;
   if(typeof v==='string') return v.trim();
@@ -1423,14 +1680,16 @@ function buildUCTDryChart(){
   if(!el||typeof Chart==='undefined')return;
   const t=UCT_DRY[uctDryIdx]||newUCTDry();
   const pts=computeUCTDryChartData(t);
+  const dryRs_su=calcUCTDrySummary(t).su;
   if(window.__uctDryChart)window.__uctDryChart.destroy();
-  window.__uctDryChart=new Chart(el,{type:'line',data:{datasets:[{label:`Sample ${t.no||uctDryIdx+1}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'},grid:{color:'#eaebf2'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'},grid:{color:'#eaebf2'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||uctDryIdx+1}`}}}});
+  window.__uctDryChart=new Chart(el,{type:'line',data:{datasets:[{label:`Sample ${t.no||uctDryIdx+1}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'},{label:'Su',data:(dryRs_su!==null?[{x:0,y:dryRs_su}]:[]),parsing:false,showLine:false,pointStyle:'line',rotation:90,pointRadius:8,borderWidth:3,borderColor:'#ff0000',backgroundColor:'#ff0000'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'},grid:{color:'#eaebf2'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'},grid:{color:'#eaebf2'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||uctDryIdx+1}`}}}});
 }
 function renderUCTDryChartImage(t,w=640,h=360){
   const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h;
   const pts=computeUCTDryChartData(t);
   if(!pts.length){const ctx=tmp.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#666';ctx.font='16px Arial';ctx.textAlign='center';ctx.fillText(`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'}`,w/2,30);ctx.font='13px Arial';ctx.fillText('No chart data',w/2,h/2);return tmp.toDataURL('image/png');}
-  const ch=new Chart(tmp,{type:'line',data:{datasets:[{label:`Sample ${t.no||'-'}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'}]},options:{responsive:false,animation:false,devicePixelRatio:2,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'}`}}}});
+  const dryRs_su=calcUCTDrySummary(t).su;
+  const ch=new Chart(tmp,{type:'line',data:{datasets:[{label:`Sample ${t.no||'-'}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',tension:.15,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'},{label:'Su',data:(dryRs_su!==null?[{x:0,y:dryRs_su}]:[]),parsing:false,showLine:false,pointStyle:'line',rotation:90,pointRadius:8,borderWidth:3,borderColor:'#ff0000',backgroundColor:'#ff0000'}]},options:{responsive:false,animation:false,devicePixelRatio:2,scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'}}},plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:`UNCONFINED COMPRESSION TEST (DRY MIXED) — Sample ${t.no||'-'}`}}}});
   const dataUrl=tmp.toDataURL('image/png');ch.destroy();return dataUrl;
 }
 const IMG={uw:[],sv:[],att:[],uct:[],uctDry:[]};
