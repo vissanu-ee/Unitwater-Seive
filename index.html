@@ -359,6 +359,11 @@ tailwind.config = {
         <h3 class="text-sm font-bold text-[#1d2772] mb-3">Deviator Stress – Axial Strain Curve</h3>
         <div class="h-[360px]"><canvas id="uctChart"></canvas></div>
       </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h3 class="text-sm font-bold text-[#1d2772] mb-1">Deviator Stress – Axial Strain Curve — Smoothed Curve</h3>
+        <p class="text-[11px] text-slate-400 mb-3">เส้นโค้งปรับให้เรียบจากข้อมูลจริง (ค่าสูงสุด qu ใช้ค่าจริง ไม่ถูกปรับ)</p>
+        <div class="h-[360px]"><canvas id="uctChartSmooth"></canvas></div>
+      </div>
     </div>
   </div>
 </main>
@@ -1528,6 +1533,7 @@ function computeUCTChartData(t){
 }
 
 function buildUCTChart(){
+  buildUCTSmoothChart();
   const t = UCT[uctIdx];
   const ctx = document.getElementById('uctChart');
   const {pts, su} = computeUCTChartData(t);
@@ -1553,6 +1559,33 @@ function buildUCTChart(){
     }
 
   });
+}
+
+/* ---- Module 5: Smoothed curve (same style as original chart; plotted values simulated, peak = measured) ---- */
+let uctChartSmooth=null;
+function uctSmoothConfig(t,forImage){
+  const {pts:raw,su}=computeUCTChartData(t);
+  const pts=smoothDryPoints(raw.slice().sort((a,b)=>a.x-b.x));
+  const title=`UNCONFINED COMPRESSION TEST — Sample ${t.no||'-'} (Smoothed)`;
+  return {type:'line',data:{datasets:[
+    {label:`Sample ${t.no||'-'}`,data:pts,parsing:false,borderColor:'#000080',backgroundColor:'#000080',cubicInterpolationMode:'monotone',tension:.4,borderWidth:2,pointRadius:3,pointBackgroundColor:'#000080',pointBorderColor:'#000080'},
+    {label:'Su',data:su!==null?[{x:0,y:su}]:[],parsing:false,showLine:false,pointStyle:'line',rotation:90,pointRadius:8,borderWidth:3,borderColor:'#ff0000',backgroundColor:'#ff0000'}
+  ]},options:Object.assign({responsive:true,maintainAspectRatio:false,
+    scales:{x:{type:'linear',title:{display:true,text:'Axial Strain, %'},grid:{color:'#eaebf2'}},y:{min:0,title:{display:true,text:'Deviator Stress, t/m²'},grid:{color:'#eaebf2'}}},
+    plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},title:{display:true,text:title}}},
+    forImage?{responsive:false,animation:false,devicePixelRatio:2}:{})};
+}
+function buildUCTSmoothChart(){
+  const el=document.getElementById('uctChartSmooth');
+  if(!el||typeof Chart==='undefined')return;
+  const t=UCT[uctIdx];
+  if(uctChartSmooth)uctChartSmooth.destroy();
+  uctChartSmooth=new Chart(el,uctSmoothConfig(t,false));
+}
+function renderUCTSmoothChartImage(t,w=640,h=360){
+  const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h;
+  const ch=new Chart(tmp,uctSmoothConfig(t,true));
+  const dataUrl=tmp.toDataURL('image/png');ch.destroy();return dataUrl;
 }
 
 function renderUCTChartImage(t, w=640, h=360){
@@ -2899,6 +2932,7 @@ async function exportExcel(){
         ws.getCell(suRow,6).value=formulaCell(`=IF(F${quRow}=\"\",\"\",ROUND(F${quRow}/2,2))`,sum.su);
         r++;
         r = xImage(wb, ws, renderUCTChartImage(t), r, 6);
+        r = xImage(wb, ws, renderUCTSmoothChartImage(t), r, 6);
       });
     }
 
