@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Soil Lab Data Processor | Ten Consultants Co., Ltd.</title>
 
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src https://generativelanguage.googleapis.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -68,7 +70,7 @@ tailwind.config = {
     <label class="block text-xs font-semibold text-slate-600">ชื่อผู้ใช้</label>
     <input id="authUser" autocomplete="username" class="mt-1 mb-3 w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#9aa1d0]" placeholder="เช่น user01">
     <label class="block text-xs font-semibold text-slate-600">รหัสผ่าน</label>
-    <input id="authPass" type="password" autocomplete="current-password" class="mt-1 mb-4 w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#9aa1d0]" placeholder="อย่างน้อย 6 ตัวอักษร">
+    <input id="authPass" type="password" autocomplete="current-password" class="mt-1 mb-4 w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-[#9aa1d0]" placeholder="อย่างน้อย 8 ตัวอักษร">
     <button id="authSubmit" class="w-full py-2.5 rounded-lg bg-[#3845a8] hover:bg-[#283387] text-white font-bold">เข้าสู่ระบบ</button>
     <div class="mt-4 text-[10px] text-slate-400 leading-relaxed">
       ระบบนี้เป็นการ Login แบบ Browser-local สำหรับไฟล์ HTML แบบ standalone ข้อมูลผู้ใช้และ API Key จะถูกเก็บแยกตาม Browser/ผู้ใช้ และไม่มี API Key ฝังอยู่ใน source code
@@ -510,6 +512,10 @@ function userUsageKey(){return userKey('gemUsageV1');}
 function userStateKey(){return userKey('tenConsultantsSoilLabStateV31');}
 function getSavedUser(){return normUser(localStorage.getItem(AUTH_SESSION_KEY)||'');}
 
+/* SECRETS: optional server-side proxy. Leave '' to call Google directly with the user's own key (stored encrypted).
+   When set (e.g. 'https://ocr-proxy.example.org'), the Google key stays on the server and the browser only holds a
+   per-user, revocable proxy access token. You MUST also add the proxy origin to connect-src in the CSP <meta> above. */
+const GEM_PROXY_URL = '';
 const CFG = {
   GEM_KEY : '',
   GEM_MODE: 'auto',
@@ -518,7 +524,7 @@ const CFG = {
   GEM_FALLBACK: 'gemini-3.1-pro-preview'
 };
 function loadUserSettings(){
-  CFG.GEM_KEY=ACTIVE_USER ? (localStorage.getItem(userGemKey())||'') : '';
+  // CFG.GEM_KEY is decrypted by loadUserSecrets() right after login (never stored in plaintext)
   CFG.GEM_MODE=ACTIVE_USER ? (localStorage.getItem(userGemModeKey())||'auto') : 'auto';
 }
 function clearAuthError(){const e=document.getElementById('authError');if(e)e.classList.add('hidden');}
@@ -532,24 +538,86 @@ function setAuthMode(mode){
   document.getElementById('authSubmit').dataset.mode=mode;
   clearAuthError();
 }
+/* ---- SECURITY: salted, slow password hashing (PBKDF2-SHA256) + constant-time compare + login throttling ---- */
+const PBKDF2_ITER=210000;
+const AUTH_FAIL_KEY='tenConsultantsAuthFailV1';
+function randHex(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return [...a].map(b=>b.toString(16).padStart(2,'0')).join('');}
+/* One PBKDF2 run yields 512 bits: first 256 = password verifier (unchanged from V31 hashes), last 256 = AES-GCM key used to
+   encrypt the user's API key / proxy token at rest. The encryption key exists only in memory after login. */
+let SESSION_ENC_KEY=null;
+const _hex=u=>[...u].map(b=>b.toString(16).padStart(2,'0')).join('');
+function _b64(u){let t='';u.forEach(c=>t+=String.fromCharCode(c));return btoa(t);}
+function _unb64(x){const t=atob(x),u=new Uint8Array(t.length);for(let i=0;i<t.length;i++)u[i]=t.charCodeAt(i);return u;}
+async function deriveAuth(pw,saltHex,iter){
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(pw)),'PBKDF2',false,['deriveBits']);
+  const salt=new Uint8Array((saltHex.match(/../g)||[]).map(h=>parseInt(h,16)));
+  const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations:iter},key,512));
+  const encKey=await crypto.subtle.importKey('raw',bits.slice(32,64),'AES-GCM',false,['encrypt','decrypt']);
+  return {hash:_hex(bits.slice(0,32)),encKey};
+}
+async function pbkdf2Hash(pw,saltHex,iter){return (await deriveAuth(pw,saltHex,iter)).hash;}
+function gemKeyEncStorageKey(){return userKey('gemKeyEncV2');}
+async function encryptSecret(plain){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(ACTIVE_USER)},SESSION_ENC_KEY,new TextEncoder().encode(plain));
+  return JSON.stringify({v:2,iv:_b64(iv),ct:_b64(new Uint8Array(ct))});
+}
+async function decryptSecret(json){
+  try{const o=JSON.parse(json);const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_unb64(o.iv),additionalData:new TextEncoder().encode(ACTIVE_USER)},SESSION_ENC_KEY,_unb64(o.ct));return new TextDecoder().decode(pt);}catch(e){return '';}
+}
+async function saveGemKeySecure(){
+  if(CFG.GEM_KEY && SESSION_ENC_KEY) localStorage.setItem(gemKeyEncStorageKey(),await encryptSecret(CFG.GEM_KEY));
+  else localStorage.removeItem(gemKeyEncStorageKey());
+  localStorage.removeItem(userGemKey()); // never keep the plaintext copy
+}
+async function loadUserSecrets(){
+  CFG.GEM_KEY='';
+  const encRaw=localStorage.getItem(gemKeyEncStorageKey());
+  if(encRaw && SESSION_ENC_KEY) CFG.GEM_KEY=await decryptSecret(encRaw);
+  const legacy=localStorage.getItem(userGemKey());          // V30/V31 plaintext key -> migrate then delete
+  if(legacy){ if(!CFG.GEM_KEY) CFG.GEM_KEY=legacy; await saveGemKeySecure(); }
+}
+function maskSecret(k){k=String(k||'');return k?('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'+k.slice(-4)):'';}
+function safeEq(a,b){a=String(a||'');b=String(b||'');let d=a.length^b.length;const n=Math.max(a.length,b.length);for(let i=0;i<n;i++)d|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return d===0;}
+function authFailState(){try{return JSON.parse(localStorage.getItem(AUTH_FAIL_KEY)||'{}')||{};}catch(e){return {};}}
+function authLockLeft(user){const f=authFailState()[user];return f&&f.until&&f.until>Date.now()?Math.ceil((f.until-Date.now())/1000):0;}
+function authRecordFail(user){const st=authFailState();const f=st[user]||{n:0,until:0};f.n=(f.n||0)+1;if(f.n>=5)f.until=Date.now()+Math.min(900000,30000*Math.pow(2,f.n-5));st[user]=f;try{localStorage.setItem(AUTH_FAIL_KEY,JSON.stringify(st));}catch(e){}}
+function authClearFail(user){const st=authFailState();if(st[user]){delete st[user];try{localStorage.setItem(AUTH_FAIL_KEY,JSON.stringify(st));}catch(e){}}}
 async function authenticate(){
   const mode=document.getElementById('authSubmit').dataset.mode||'login';
   const username=normUser(document.getElementById('authUser').value);
   const password=document.getElementById('authPass').value||'';
   if(!username) return showAuthError('กรุณาระบุชื่อผู้ใช้');
   if(username.length<3) return showAuthError('ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร');
-  if(password.length<6) return showAuthError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+  if(mode==='register' && password.length<8) return showAuthError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
+  if(mode!=='register' && !password) return showAuthError('กรุณาระบุรหัสผ่าน');
+  const lock=authLockLeft(username);
+  if(lock>0) return showAuthError(`ลองผิดหลายครั้งเกินไป กรุณารอ ${lock} วินาทีแล้วลองใหม่`);
   const users=authUsers();
-  const hash=await hashText(password);
   if(mode==='register'){
-    if(users[username]) return showAuthError('ชื่อผู้ใช้นี้มีอยู่แล้ว กรุณาเข้าสู่ระบบ');
-    users[username]={passwordHash:hash,createdAt:new Date().toISOString()};
+    if(Object.prototype.hasOwnProperty.call(users,username)) return showAuthError('ชื่อผู้ใช้นี้มีอยู่แล้ว กรุณาเข้าสู่ระบบ');
+    const salt=randHex(16);
+    const da=await deriveAuth(password,salt,PBKDF2_ITER);SESSION_ENC_KEY=da.encKey;
+    users[username]={algo:'pbkdf2-sha256',iter:PBKDF2_ITER,salt,passwordHash:da.hash,createdAt:new Date().toISOString()};
     saveAuthUsers(users);
   }else{
-    if(!users[username] || users[username].passwordHash!==hash) return showAuthError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    const u=Object.prototype.hasOwnProperty.call(users,username)?users[username]:null;
+    let ok=false;
+    if(u && u.algo==='pbkdf2-sha256' && u.salt){
+      const da=await deriveAuth(password,u.salt,u.iter||PBKDF2_ITER);ok=safeEq(da.hash,u.passwordHash);if(ok)SESSION_ENC_KEY=da.encKey;
+    }else if(u){
+      // legacy account (unsalted SHA-256): verify, then upgrade to PBKDF2 immediately
+      ok=safeEq(await hashText(password),u.passwordHash);
+      if(ok){const salt=randHex(16);const da=await deriveAuth(password,salt,PBKDF2_ITER);SESSION_ENC_KEY=da.encKey;users[username]={algo:'pbkdf2-sha256',iter:PBKDF2_ITER,salt,passwordHash:da.hash,createdAt:u.createdAt||new Date().toISOString()};saveAuthUsers(users);}
+    }else{
+      await pbkdf2Hash(password,'00000000000000000000000000000000',PBKDF2_ITER); // equalize timing for unknown users
+    }
+    if(!ok){authRecordFail(username);return showAuthError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');}
+    authClearFail(username);
   }
   ACTIVE_USER=username;
   localStorage.setItem(AUTH_SESSION_KEY,ACTIVE_USER);
+  await loadUserSecrets();
   loadUserSettings();
   document.getElementById('authGate').classList.add('hidden');
   document.getElementById('appShell').classList.add('auth-ready');
@@ -598,6 +666,10 @@ const SIEVES = [
 const r2 = v => (v===''||v===null||v===undefined||isNaN(v)) ? null : Math.round(v*100)/100;
 const num = v => { const n = parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?null:n; };
 const show = v => (v===null||v===undefined) ? '' : v;
+/* SECURITY: HTML-escape every untrusted string (OCR/AI output, saved state, user input) before it is placed into innerHTML */
+function escHtml(v){return String(v===null||v===undefined?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');}
+const showH = v => escHtml(show(v));
+function redactKey(t){let x=String(t);const k=(typeof CFG!=='undefined'&&CFG.GEM_KEY)?CFG.GEM_KEY:'';if(k)x=x.split(k).join('[REDACTED]');return x.replace(/AIza[0-9A-Za-z_\-]{20,}/g,'[REDACTED]').replace(/(Bearer\s+)[A-Za-z0-9._\-]{8,}/gi,'$1[REDACTED]');}
 
 /* =====================================================================
    DATA MODEL
@@ -1123,7 +1195,7 @@ function renderUW(){
       if(row.type==='calc'){
         html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[row.key])}</td>`;
       }else{
-        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${show(s[row.key])}"></td>`;
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${showH(s[row.key])}"></td>`;
       }
     });
     html += `</tr>`;
@@ -1165,7 +1237,7 @@ function renderSummary(){
                : w>=20 ? 'bg-[#faf2df] text-[#8a6a20] border-[#f3e3bd]'
                        : 'bg-[#d8f3e8] text-[#1b6b4c] border-[#b2e6d2]';
     return `<div class="rounded-xl border ${tone} px-3 py-3 text-center">
-      <div class="text-[10px] opacity-70">Sample ${s.no||i+1} · ${s.cont||'-'}</div>
+      <div class="text-[10px] opacity-70">Sample ${escHtml(s.no||i+1)} · ${escHtml(s.cont||'-')}</div>
       <div class="text-xl font-bold mt-1">${w===null?'—':w}</div>
       <div class="text-[10px]">% water content</div></div>`;
   }).join('');
@@ -1190,7 +1262,7 @@ function renderSieve(){
       const title = st.invalid ? `ตรวจสอบ % Finer: ${st.reasons.join(', ')}` : '';
       return `<tr class="border-b border-slate-100">
         <td class="px-2 py-1.5 font-semibold text-slate-600">${r.sieve}</td>
-        <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${r.sieve}" value="${show(s.f[r.sieve])}"></td>
+        <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${r.sieve}" value="${showH(s.f[r.sieve])}"></td>
         <td class="px-2 py-1.5 text-center text-slate-500">${show(r.g)}</td>
         <td class="px-2 py-1.5 text-center calc-cell">${show(r.h)}</td>
         <td class="px-2 py-1.5 text-center calc-cell font-bold${cls}" title="${title}">${show(r.i)}</td>
@@ -1199,14 +1271,14 @@ function renderSieve(){
 
     return `<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden fade-in">
       <div class="px-4 py-2.5 bg-[#1d2772] text-white flex items-center justify-between">
-        <span class="text-sm font-bold">Sample No. ${s.no}</span>
-        <span class="text-[11px] opacity-80">Dish ${s.dish} · ${document.getElementById('pjBoring').value}</span>
+        <span class="text-sm font-bold">Sample No. ${escHtml(s.no)}</span>
+        <span class="text-[11px] opacity-80">Dish ${escHtml(s.dish)} · ${escHtml(document.getElementById('pjBoring').value)}</span>
       </div>
       <div class="px-4 py-3 bg-slate-50/70 space-y-2 text-[11px]">
         <div class="grid grid-cols-3 gap-2">
-          <label class="flex items-center gap-1">Sample: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="no" value="${show(s.no)}"></label>
-          <label class="flex items-center gap-1">Dish: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="dish" value="${show(s.dish)}"></label>
-          <label class="flex items-center gap-1">Depth: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="depth" value="${show(s.depth)}"></label>
+          <label class="flex items-center gap-1">Sample: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="no" value="${showH(s.no)}"></label>
+          <label class="flex items-center gap-1">Dish: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="dish" value="${showH(s.dish)}"></label>
+          <label class="flex items-center gap-1">Depth: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="depth" value="${showH(s.depth)}"></label>
         </div>
         <div class="grid grid-cols-5 gap-1 pt-1 text-center">
           <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Dish Wt.)</span><b class="text-xs">${show(s.a)}</b></div>
@@ -1286,7 +1358,7 @@ function renderATT(){
       if(row.type==='calc'){
         html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[row.key])}</td>`;
       }else{
-        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${show(s[row.key])}"></td>`;
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${row.key}" value="${showH(s[row.key])}"></td>`;
       }
     });
     html += `</tr>`;
@@ -1349,9 +1421,9 @@ function renderSUM(){
         html += `<td class="tbl-cell calc-cell text-center px-1 py-1.5">${show(calc[c.key])}</td>`;
       }else if(c.type==='uscs'){
         const suggestion = calc.uscsAuto && !s.uscs ? `<span class="text-slate-300">(${calc.uscsAuto}?)</span>` : '';
-        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="uscs" value="${show(s.uscs)}" placeholder="${calc.uscsAuto||''}" class="text-center">${suggestion}</td>`;
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="uscs" value="${showH(s.uscs)}" placeholder="${escHtml(calc.uscsAuto||'')}" class="text-center">${suggestion}</td>`;
       }else{
-        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${c.key}" value="${show(s[c.key])}" class="text-center"></td>`;
+        html += `<td class="tbl-cell input-cell px-1 py-1"><input data-idx="${i}" data-key="${c.key}" value="${showH(s[c.key])}" class="text-center"></td>`;
       }
     });
     html += `</tr>`;
@@ -1385,11 +1457,11 @@ function refreshCalcOnlySUM(){
    ===================================================================== */
 function infoRow(label, id, val, unit){
   return `<label class="flex items-center justify-between gap-2"><span class="text-slate-500">${label}</span>
-    <input id="${id}" class="w-28 text-right bg-[#fffdf2] border border-slate-200 rounded px-1.5 py-0.5" value="${show(val)}"><span class="text-[10px] text-slate-400 w-8">${unit||''}</span></label>`;
+    <input id="${id}" class="w-28 text-right bg-[#fffdf2] border border-slate-200 rounded px-1.5 py-0.5" value="${showH(val)}"><span class="text-[10px] text-slate-400 w-8">${unit||''}</span></label>`;
 }
 function calcRow(label, val, unit){
   return `<div class="flex items-center justify-between gap-2"><span class="text-slate-500">${label}</span>
-    <span class="calc-cell rounded px-2 py-0.5 font-semibold">${show(val)} <span class="text-[10px] font-normal opacity-70">${unit||''}</span></span></div>`;
+    <span class="calc-cell rounded px-2 py-0.5 font-semibold">${showH(val)} <span class="text-[10px] font-normal opacity-70">${unit||''}</span></span></div>`;
 }
 
 /* ===== หมวด 5 (UCT) และ Grain Size Curve: ฟังก์ชัน render/chart (กู้คืนจาก v33) ===== */
@@ -1451,7 +1523,7 @@ function renderUCT(){
     const c = calcUCTRow(t,R,t.Q[i]);
     html += `<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}">
       <td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td>
-      <td class="tbl-cell input-cell px-1 py-1"><input data-row="${i}" value="${show(t.Q[i])}"></td>
+      <td class="tbl-cell input-cell px-1 py-1"><input data-row="${i}" value="${showH(t.Q[i])}"></td>
       <td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td>
       <td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td>
       <td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td>
@@ -1695,7 +1767,7 @@ function renderUCTDry(){
   const sum=calcUCTDrySummary(t);
   document.getElementById('uctDryResultBox').innerHTML=`<h3 class="text-sm font-bold text-[#1d2772] mb-2">ผลคำนวณ</h3><div class="space-y-1.5 text-xs">${calcRow('Area, A',sum.area,'cm²')}${calcRow('Volume, V=A.h',sum.vol,'cm³')}${calcRow('Weight of Soil, W',sum.W,'g')}${calcRow('Wet Unit Weight, γt',sum.gt,'t/m³')}${calcRow('Weight of Water',sum.water,'g')}${calcRow('Weight of Dry Soil',sum.drySoil,'g')}${calcRow('Water Content, w',sum.wc,'%')}${calcRow('Dry Unit Weight, γd',sum.gd,'t/m³')}<div class="pt-2 mt-2 border-t space-y-1.5">${calcRow('Unconfined Compressive Strength, qu',sum.qu,'t/m²')}${calcRow('Undrained Shear Strength, Su',sum.su,'t/m²')}</div></div>`;
   let html=`<thead><tr class="bg-[#0f185a] text-white text-[11px]"><th class="px-2 py-2">Deformation<br>Dial R<br>(x0.01 mm)</th><th class="px-2 py-2">Load Dial, Q<br>(x0.0001 in.)</th><th class="px-2 py-2">Axial Strain<br>E=Rx10⁻²/10h</th><th class="px-2 py-2">Corrected Area<br>A'=A/(1-E) (cm²)</th><th class="px-2 py-2">Deviator Load<br>P=Q.K (kg)</th><th class="px-2 py-2">Deviator Stress<br>σ1-σ3=10P/A' (t/m²)</th></tr></thead><tbody>`;
-  dryRs(t).forEach((R,i)=>{if(!dryValidR(R)){html+='<tr class="border-b border-slate-100 '+(i%2?'bg-slate-50/60':'bg-white')+'"><td class="px-2 py-1 text-center font-mono text-slate-500">&nbsp;</td><td class="tbl-cell input-cell px-1 py-1"><input disabled value="" style="opacity:.35"></td>'+'<td class="px-2 py-1 text-center calc-cell">&nbsp;</td>'.repeat(4)+'</tr>';return;}const c=calcUCTDryRow(t,R,t.Q[i]);html+=`<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}"><td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td><td class="tbl-cell input-cell px-1 py-1"><input data-dry-row="${i}" value="${show(t.Q[i])}"></td><td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td><td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td></tr>`;});
+  dryRs(t).forEach((R,i)=>{if(!dryValidR(R)){html+='<tr class="border-b border-slate-100 '+(i%2?'bg-slate-50/60':'bg-white')+'"><td class="px-2 py-1 text-center font-mono text-slate-500">&nbsp;</td><td class="tbl-cell input-cell px-1 py-1"><input disabled value="" style="opacity:.35"></td>'+'<td class="px-2 py-1 text-center calc-cell">&nbsp;</td>'.repeat(4)+'</tr>';return;}const c=calcUCTDryRow(t,R,t.Q[i]);html+=`<tr class="border-b border-slate-100 ${i%2?'bg-slate-50/60':'bg-white'}"><td class="px-2 py-1 text-center font-mono text-slate-500">${R}</td><td class="tbl-cell input-cell px-1 py-1"><input data-dry-row="${i}" value="${showH(t.Q[i])}"></td><td class="px-2 py-1 text-center calc-cell">${show(c.strain)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.corrArea)}</td><td class="px-2 py-1 text-center calc-cell">${show(c.load)}</td><td class="px-2 py-1 text-center calc-cell font-bold">${show(c.stress)}</td></tr>`;});
   html+='</tbody>';
   const tbl=document.getElementById('tblUCTDry');tbl.innerHTML=html;
   const bindDry=(id,obj,key,onchange)=>{const el=document.getElementById(id);el.addEventListener('input',e=>{obj[key]=e.target.value;if(onchange)onchange();scheduleSaveState();});};
@@ -1854,8 +1926,8 @@ async function handleFiles(files, prevId, bucket){
     renderPrev(prevId, bucket);
     toast(`เตรียมรูป ${processed.length} รูปเรียบร้อย (ย่อสูงสุด 1600px / JPEG 72%)`,'success');
   }catch(err){
-    console.error(err);
-    toast(err.message || 'ไม่สามารถเตรียมรูปภาพได้','error');
+    console.error(redactKey(err&&err.message||err));
+    toast(redactKey(err.message||'') || 'ไม่สามารถเตรียมรูปภาพได้','error');
   }
 }
 function renderPrev(prevId, bucket){
@@ -1900,13 +1972,13 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
     if(schema) generationConfig.responseSchema = schema;
 
     const body = JSON.stringify({contents:[{role:'user', parts}], generationConfig});
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${CFG.GEM_KEY}`;
+    const url = GEM_PROXY_URL ? `${GEM_PROXY_URL.replace(/\/+$/,'')}/v1beta/models/${model}:generateContent` : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     const MAX_RETRIES = 2;
 
     for(let attempt=0; attempt<=MAX_RETRIES; attempt++){
       let res;
       try{
-        res = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+        res = await fetch(url,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},GEM_PROXY_URL?{'Authorization':'Bearer '+CFG.GEM_KEY}:{'x-goog-api-key':CFG.GEM_KEY}),body});
       }catch(netErr){
         lastErr = new Error('เชื่อมต่อ Gemini API ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
         if(attempt<MAX_RETRIES){await new Promise(r=>setTimeout(r,1500*Math.pow(2,attempt)));continue;}
@@ -2057,14 +2129,14 @@ async function callGemini(imgs, promptText, maxOutputTokens = 1536, schema = nul
     // but also when a model returns malformed/truncated JSON. This is important
     // for Sieve OCR because a long structured response can occasionally be cut
     // off even though the HTTP request itself succeeded.
-    if(lastErr) modelErrors.push(`${GEM_PRICING[model]?.name||model}: ${lastErr.message}`);
+    if(lastErr) modelErrors.push(redactKey(`${GEM_PRICING[model]?.name||model}: ${lastErr.message}`));
     if(CFG.GEM_MODE==='auto' && mi<models.length-1 && lastErr) continue;
     break;
   }
   if(modelErrors.length>1){
     throw new Error(`Gemini OCR ใช้งานไม่ได้จากทุกโมเดลที่ตั้งไว้\n\n${modelErrors.map(x=>`• ${x}`).join('\n')}`);
   }
-  throw lastErr || new Error('Gemini API request failed');
+  throw lastErr ? new Error(redactKey(lastErr.message)) : new Error('Gemini API request failed');
 }
 
 // Schema สั้นๆ แทนการอธิบาย field เป็นข้อความยาวๆ ใน prompt — ลด token
@@ -2201,7 +2273,7 @@ Read handwriting exactly. Do not calculate. Blank/unreadable = null. Do not inve
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     const msg = String(err.message||'');
     if(/quota limit 0|โควตาของ .* เป็น 0/i.test(msg)){
-      Swal.fire({icon:'warning', title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลนี้', html:`<div style=\"text-align:left;font-size:14px;line-height:1.55\">${msg.replace(/\n/g,'<br>')}<br><br><b>แนะนำ:</b> ตรวจสอบ API key / Project / Billing ใน Google AI Studio แล้วเลือกโมเดลที่มี quota มากกว่า 0</div>`});
+      Swal.fire({icon:'warning', title:'Gemini API ยังไม่มีโควตาสำหรับโมเดลนี้', html:`<div style=\"text-align:left;font-size:14px;line-height:1.55\">${escHtml(msg).replace(/\n/g,'<br>')}<br><br><b>แนะนำ:</b> ตรวจสอบ API key / Project / Billing ใน Google AI Studio แล้วเลือกโมเดลที่มี quota มากกว่า 0</div>`});
     }else{
       Swal.fire({icon:'error', title:'อ่านค่าไม่สำเร็จ', text:msg});
     }
@@ -2997,7 +3069,7 @@ async function exportExcel(){
     Swal.fire({
       icon:'success',
       title:'สร้างไฟล์ Excel สำเร็จ',
-      html:`<div class="text-sm text-left">ไฟล์: <b>${fileName}</b><br>ขนาด: <b>${(blob.size/1024).toFixed(1)} KB</b><br>${inFrame ? '<span class="text-amber-600">เปิดไฟล์ Excel ในแท็บใหม่แล้ว หาก Browser ไม่ดาวน์โหลดอัตโนมัติ ให้กด Ctrl+S ในแท็บนั้น</span>' : 'เริ่มดาวน์โหลดไฟล์แล้ว'}</div>`,
+      html:`<div class="text-sm text-left">ไฟล์: <b>${escHtml(fileName)}</b><br>ขนาด: <b>${(blob.size/1024).toFixed(1)} KB</b><br>${inFrame ? '<span class="text-amber-600">เปิดไฟล์ Excel ในแท็บใหม่แล้ว หาก Browser ไม่ดาวน์โหลดอัตโนมัติ ให้กด Ctrl+S ในแท็บนั้น</span>' : 'เริ่มดาวน์โหลดไฟล์แล้ว'}</div>`,
       timer: inFrame ? 5000 : 2200,
       showConfirmButton:false
     });
@@ -3042,9 +3114,10 @@ function openSettings(note){
     title:'ตั้งค่า AI OCR',
     width:620,
     html:`
-      ${note ? `<div class="text-xs text-[#a04040] mb-2 text-left">${note}</div>` : ''}
-      <input id="swGem" class="swal2-input !text-xs" placeholder="Gemini API Key (สำหรับปุ่ม OCR)" value="${CFG.GEM_KEY}">
-      <div class="text-[10px] text-slate-400 mt-1">API Key จะถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น</div>
+      ${note ? `<div class="text-xs text-[#a04040] mb-2 text-left">${escHtml(note)}</div>` : ''}
+      <input id="swGem" type="password" autocomplete="new-password" spellcheck="false" class="swal2-input !text-xs" placeholder="${CFG.GEM_KEY ? 'บันทึกไว้แล้ว ('+escHtml(maskSecret(CFG.GEM_KEY))+') — พิมพ์ใหม่เพื่อเปลี่ยน' : (GEM_PROXY_URL ? 'Proxy Access Token (ขอจากผู้ดูแลระบบ)' : 'Gemini API Key (สำหรับปุ่ม OCR)')}" value="">
+      ${CFG.GEM_KEY ? '<label class="flex items-center gap-2 text-[11px] text-slate-500 mt-1 text-left"><input id="swClear" type="checkbox"> ลบ Key ที่บันทึกไว้ในเบราว์เซอร์นี้</label>' : ''}
+      <div class="text-[10px] text-slate-400 mt-1">Key ถูกเก็บแบบเข้ารหัส (AES-GCM) ด้วยรหัสผ่านของผู้ใช้ในเบราว์เซอร์นี้เท่านั้น ผู้ใช้อื่นอ่านไม่ได้ และจะถูกถอดรหัสเฉพาะหลังเข้าสู่ระบบ</div>
       <div class="mt-4 text-left">
         <label class="text-xs font-semibold text-slate-600">โหมด AI OCR</label>
         <select id="swGemMode" class="swal2-select !text-xs w-full mt-1" style="margin:6px 0 0;width:100%">
@@ -3062,11 +3135,12 @@ function openSettings(note){
       <div class="mt-2 text-[10px] text-slate-400 text-left">ราคาที่ใช้คำนวณเป็น Standard Paid Tier ของ Google และเป็นเพียงประมาณการจาก usageMetadata ที่ API ส่งกลับ</div>
     `,
     confirmButtonText:'บันทึก', confirmButtonColor:'#3845a8',
-    preConfirm:()=>({key:document.getElementById('swGem').value.trim(),mode:document.getElementById('swGemMode').value})
-  }).then(r=>{
+    preConfirm:()=>({key:document.getElementById('swGem').value.trim(),mode:document.getElementById('swGemMode').value,clear:!!(document.getElementById('swClear')&&document.getElementById('swClear').checked)})
+  }).then(async r=>{
     if(r.isConfirmed){
-      CFG.GEM_KEY=r.value.key; CFG.GEM_MODE=r.value.mode;
-      localStorage.setItem(userGemKey(),CFG.GEM_KEY); localStorage.setItem(userGemModeKey(),CFG.GEM_MODE);
+      if(r.value.clear) CFG.GEM_KEY=''; else if(r.value.key) CFG.GEM_KEY=r.value.key;
+      CFG.GEM_MODE=r.value.mode;
+      await saveGemKeySecure(); localStorage.setItem(userGemModeKey(),CFG.GEM_MODE);
       updateAiBadge(); toast('บันทึกการตั้งค่า AI แล้ว');
     }
   });
@@ -3152,11 +3226,13 @@ function logoutUser(){
   saveAppState();
   localStorage.removeItem(AUTH_SESSION_KEY);
   ACTIVE_USER='';
-  CFG.GEM_KEY=''; CFG.GEM_MODE='auto'; GEM_USAGE=[];
+  CFG.GEM_KEY=''; CFG.GEM_MODE='auto'; GEM_USAGE=[]; SESSION_ENC_KEY=null;
   document.getElementById('appShell').classList.remove('auth-ready');
   document.getElementById('authGate').classList.remove('hidden');
   document.getElementById('authPass').value='';
   setAuthMode('login');
+  // SECURITY: wipe all in-memory data (UW/SV/ATT/UCT/SUM/images/API key) so the next user can never see it
+  setTimeout(()=>location.reload(),50);
 }
 
 function bootApp(){
