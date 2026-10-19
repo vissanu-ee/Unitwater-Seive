@@ -2226,6 +2226,32 @@ const UCT_DRY_SCHEMA = {
   },required:["readings"]}
 };
 
+
+// Text such as "null"/"none"/"-" returned by the OCR model is NOT a real sample/dish id.
+function cleanSieveId(v){ const t=String(v??'').trim(); return /^(null|none|undefined|n\/?a|-+)$/i.test(t)?'':t; }
+// Merge cards that belong to the same sample (same page set), but keep cards whose header
+// could not be read separate (key by card index) instead of collapsing them into one.
+function mergeSieveCards(allArr){
+  const sieveKeys=SIEVES.map(x=>x.name);
+  const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
+  const sampleKey=v=>norm(v).replace(/\s+/g,'');
+  const dishKey=v=>norm(v).replace(/\s+/g,'');
+  const sampleMatchKey=v=>{ const n=sampleKey(v); const sn=sampleNumberKey(n); return sn!==null ? `N${sn}` : `T${n}`; };
+  const mergedByKey=new Map();
+  allArr.forEach((item,i)=>{
+    const rawF=(item.f&&typeof item.f==='object'&&!Array.isArray(item.f))?item.f:{};
+    const no=cleanSieveId(item.no), dish=cleanSieveId(item.dish);
+    const key=no ? `no:${sampleMatchKey(no)}` : (dish ? `dish:${dishKey(dish)}` : `card:${item._card??i}`);
+    const prev=mergedByKey.get(key)||{no:no,dish:dish,depth:'',a:null,b:null,c:null,f:{}};
+    if(no) prev.no=no;
+    if(dish) prev.dish=dish;
+    ['a','b','c'].forEach(k=>{if(item[k]!==null&&item[k]!==undefined&&item[k]!=='') prev[k]=item[k];});
+    sieveKeys.forEach(k=>{const v=rawF[k];if(v!==null&&v!==undefined&&v!=='')prev.f[k]=v;});
+    mergedByKey.set(key,prev);
+  });
+  return [...mergedByKey.values()];
+}
+
 async function runOcrUW(){
   if(!IMG.uw.length) return toast('กรุณาอัปโหลดรูปภาพก่อน','warning');
   if(!CFG.GEM_KEY) return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
@@ -2363,7 +2389,8 @@ CRITICAL:
 4. Blank/unreadable = null. Do not invent or calculate values.
 5. Preserve decimal values exactly as written.
 6. Do NOT calculate cumulative retained, % retained, or % finer.
-7. Do not read a nearby card. Return only the card contained in this crop.
+7. Do not read a nearby card. Return only the card contained in this crop. The crop edge may show a cut-off piece of a neighbouring card (rows without their own Sample No./Dish No. header) at the top or bottom - ignore it completely and read only the card whose header is fully visible.
+7b. The Sample No. may be written or typed small at the TOP edge of the Sample No. cell (e.g. '10', '11'); read it as the sample number. If a field is truly unreadable return null - never the text 'null'.
 8. If the sample number is faint, inspect the card header carefully; do not substitute a different sample number. On this BH-1 sheet, handwritten Sample 11 may resemble 21; if the header is the Sample 11 card (Dish L-42), read it as 11, not 21.`;
 
     const allArr=[];
@@ -2388,7 +2415,7 @@ CRITICAL:
       ];
       const rows=[
         {name:'บน', y:0.085, h:0.475},
-        {name:'ล่าง',y:0.535, h:0.445}
+        {name:'ล่าง',y:0.490, h:0.500}
       ];
 
       for(const row of rows){
@@ -2404,13 +2431,13 @@ CRITICAL:
           let arr=await callGemini([{data:crop}],cardPrompt,900,SV_CARD_SCHEMA,
             'Sieve Analysis',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK]);
           let usableArr=Array.isArray(arr)?arr:[];
-          let cardOk=usableArr.some(it=>it && String(it.no??'').trim() && String(it.dish??'').trim() && Array.isArray(it.values));
+          let cardOk=usableArr.some(it=>it && cleanSieveId(it.no) && cleanSieveId(it.dish) && Array.isArray(it.values));
 
           if(!cardOk){
             const retryX=Math.max(0,probe.w*(col.x-0.020));
-            const retryY=Math.max(0,probe.h*(row.y-0.020));
+            const retryY=Math.max(0,probe.h*(row.y-0.035));
             const retryW=Math.min(probe.w,probe.w*(col.w+0.045));
-            const retryH=Math.min(probe.h,probe.h*(row.h+0.050));
+            const retryH=Math.min(probe.h-retryY,probe.h*(row.h+0.060));
             const retryCrop=await cropImageRectData(src,retryX,retryY,retryW,retryH,1700);
             const retry=await callGemini([{data:retryCrop}],
               cardPrompt+'\nRetry: this crop is still the SAME card. Re-read the header and all retained-weight rows carefully.',
@@ -2427,8 +2454,11 @@ CRITICAL:
               const v=vals[i];
               if(v!==null&&v!==undefined&&v!=='') f[sv.name]=v;
             });
-            if(String(item.no??'').trim() || String(item.dish??'').trim()){
-              allArr.push({no:item.no||'',dish:item.dish||'',a:item.a??null,b:item.b??null,c:item.c??null,f});
+            const idNo=cleanSieveId(item.no), idDish=cleanSieveId(item.dish);
+            const hasData=Object.keys(f).length>0 || [item.a,item.b,item.c].some(v=>v!==null&&v!==undefined&&v!=='');
+            // Never drop a card that has data just because its header could not be read.
+            if(idNo || idDish || hasData){
+              allArr.push({no:idNo,dish:idDish,a:item.a??null,b:item.b??null,c:item.c??null,f,_card:cardCount});
             }
           });
           if(arr?.__gemUsage) usageList.push({...arr.__gemUsage,page:page+1,row:row.name,col:col.name});
@@ -2438,30 +2468,8 @@ CRITICAL:
 
     if(!allArr.length) throw new Error('ไม่พบ Sample No. หรือ Dish No. ในรูป Sieve Analysis');
 
-    const sieveKeys=SIEVES.map(x=>x.name);
-    const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
-    const sampleKey=v=>norm(v).replace(/\s+/g,'');
-    const dishKey=v=>norm(v).replace(/\s+/g,'');
-    const sampleMatchKey=v=>{
-      const n=sampleKey(v);
-      const sn=sampleNumberKey(n);
-      return sn!==null ? `N${sn}` : `T${n}`;
-    };
-    const mergedByKey=new Map();
-
-    allArr.forEach(item=>{
-      const rawF=(item.f&&typeof item.f==='object'&&!Array.isArray(item.f))?item.f:{};
-      const key=item.no ? `no:${sampleMatchKey(item.no)}` : (item.dish ? `dish:${dishKey(item.dish)}` : '');
-      if(!key) return;
-      const prev=mergedByKey.get(key)||{no:item.no||'',dish:item.dish||'',depth:'',a:null,b:null,c:null,f:{}};
-      if(item.no) prev.no=item.no;
-      if(item.dish) prev.dish=item.dish;
-      ['a','b','c'].forEach(k=>{if(item[k]!==null&&item[k]!==undefined&&item[k]!=='') prev[k]=item[k];});
-      sieveKeys.forEach(k=>{const v=rawF[k];if(v!==null&&v!==undefined&&v!=='')prev.f[k]=v;});
-      mergedByKey.set(key,prev);
-    });
-
-    const ocrSV=[...mergedByKey.values()];
+    const ocrSV=mergeSieveCards(allArr);
+    const unnamed=ocrSV.filter(x=>!String(x.no??'').trim());
 
     // OCR handwriting safeguard: on the supplied BH-1 sheet, handwritten
     // Sample 11 can be misread as 21 (the first digit is written in a way
@@ -2496,6 +2504,7 @@ CRITICAL:
       models:[...new Set(usageList.map(u=>u.model))]
     }:null;
     toast(gemUsageToast(usage,`อ่านค่าสำเร็จ ${SV.length} ตัวอย่าง จาก ${IMG.sv.length} หน้า`),'success');
+    if(unnamed.length) Swal.fire({icon:'warning',title:'อ่านเลขตัวอย่างไม่ได้ '+unnamed.length+' การ์ด',text:'ระบบเก็บค่าที่อ่านได้ไว้แล้ว กรุณาตรวจเทียบกับใบงานและกรอก Sample No. / Dish No. ในการ์ดที่ว่างเอง'});
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     const msg=String(err?.message||err);
