@@ -2227,6 +2227,7 @@ const UCT_DRY_SCHEMA = {
 };
 
 
+function sampleMatchKey(v){ const n=String(v??'').trim().toUpperCase().replace(/[–—]/g,'-').replace(/\s+/g,''); const sn=sampleNumberKey(n); return sn!==null ? `N${sn}` : `T${n}`; }
 // Text such as "null"/"none"/"-" returned by the OCR model is NOT a real sample/dish id.
 function cleanSieveId(v){ const t=String(v??'').trim(); return /^(null|none|undefined|n\/?a|-+)$/i.test(t)?'':t; }
 // Merge cards that belong to the same sample (same page set), but keep cards whose header
@@ -2236,7 +2237,6 @@ function mergeSieveCards(allArr){
   const norm=v=>String(v??'').trim().toUpperCase().replace(/[–—]/g,'-');
   const sampleKey=v=>norm(v).replace(/\s+/g,'');
   const dishKey=v=>norm(v).replace(/\s+/g,'');
-  const sampleMatchKey=v=>{ const n=sampleKey(v); const sn=sampleNumberKey(n); return sn!==null ? `N${sn}` : `T${n}`; };
   const mergedByKey=new Map();
   allArr.forEach((item,i)=>{
     const rawF=(item.f&&typeof item.f==='object'&&!Array.isArray(item.f))?item.f:{};
