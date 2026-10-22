@@ -858,7 +858,7 @@ function sieveFinerCellClass(rows, idx){
   return st.invalid ? ' text-red-600 font-bold' : '';
 }
 
-function syncSieveFromUW(silent){
+function syncSieveFromUW(silent, force){
   // Unit Weight is the source of truth for Sieve fields a/b/c.
   // When the user edits Unit Weight and presses "ดึงค่าจากชีต Unit Weight",
   // Sieve must receive the CURRENT values, not only fill previously blank cells.
@@ -872,7 +872,9 @@ function syncSieveFromUW(silent){
     if(!src && sk) src = UW.find(u=>numKey(u.no)===sk);
     if(src){
       let changed=false;
+      if(force && s._manual) delete s._manual;   // รีเซ็ตค่าที่ผู้ใช้แก้เอง เมื่อกดปุ่มดึงค่า
       ['a','b','c'].forEach(k=>{
+        if(s._manual && s._manual[k]) return;    // ผู้ใช้แก้เอง -> ไม่เขียนทับ
         // Always synchronize to the latest Unit Weight value. This intentionally
         // overwrites stale linked values in Sieve, including when UW was edited
         // or cleared. Retained sieve weights (s.f) are never touched.
@@ -1281,9 +1283,9 @@ function renderSieve(){
           <label class="flex items-center gap-1">Depth: <input class="sv-meta w-full bg-white border rounded px-1.5 py-0.5" data-sv="${idx}" data-k="depth" value="${showH(s.depth)}"></label>
         </div>
         <div class="grid grid-cols-5 gap-1 pt-1 text-center">
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Dish Wt.)</span><b class="text-xs">${show(s.a)}</b></div>
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">b (Wet+Dish)</span><b class="text-xs">${show(s.b)}</b></div>
-          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">c (Dry+Dish)</span><b class="text-xs">${show(s.c)}</b></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">a (Dish Wt.)${(s._manual&&s._manual.a)?" ✎":""}</span><input class="sv-abc w-full text-center text-xs font-bold bg-white border border-slate-300 rounded px-0.5 py-0 focus:outline-none focus:ring-1 focus:ring-[#1d2772]" inputmode="decimal" data-sv="${idx}" data-abc="a" value="${showH(s.a)}"></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">b (Wet+Dish)${(s._manual&&s._manual.b)?" ✎":""}</span><input class="sv-abc w-full text-center text-xs font-bold bg-white border border-slate-300 rounded px-0.5 py-0 focus:outline-none focus:ring-1 focus:ring-[#1d2772]" inputmode="decimal" data-sv="${idx}" data-abc="b" value="${showH(s.b)}"></div>
+          <div class="link-cell rounded p-1"><span class="block text-[9px] text-slate-500 font-normal whitespace-nowrap overflow-hidden">c (Dry+Dish)${(s._manual&&s._manual.c)?" ✎":""}</span><input class="sv-abc w-full text-center text-xs font-bold bg-white border border-slate-300 rounded px-0.5 py-0 focus:outline-none focus:ring-1 focus:ring-[#1d2772]" inputmode="decimal" data-sv="${idx}" data-abc="c" value="${showH(s.c)}"></div>
           <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">d (Dry Sample)</span><b class="text-xs">${show(d)}</b></div>
           <div class="calc-cell rounded p-1"><span class="block text-[9px] text-emerald-700 font-normal whitespace-nowrap overflow-hidden">e (Mass Dish)</span><b class="text-xs">${show(e)}</b></div>
         </div>
@@ -1308,6 +1310,18 @@ function renderSieve(){
       const sel = box.querySelector(`input[data-sv="${e.target.dataset.sv}"][data-sieve="${e.target.dataset.sieve}"]`);
       if(sel){ sel.focus(); sel.setSelectionRange(sel.value.length, sel.value.length); }
     });
+  });
+  box.querySelectorAll('.sv-abc').forEach(inp=>{
+    inp.addEventListener('input', e=>{
+      const i=e.target.dataset.sv, k=e.target.dataset.abc, v=e.target.value;
+      const s=SV[i]; s._manual=s._manual||{};
+      if(String(v).trim()===''){ delete s._manual[k]; s[k]=''; } else { s[k]=v; s._manual[k]=true; }
+      if(!Object.keys(s._manual).length) delete s._manual;
+      renderSieve(); buildChart(); syncSummaryFromModules(); scheduleSaveState();
+      const sel=box.querySelector(`input[data-sv="${i}"][data-abc="${k}"]`);
+      if(sel){ sel.focus(); sel.setSelectionRange(sel.value.length, sel.value.length); }
+    });
+    inp.addEventListener('change', e=>{ if(String(e.target.value).trim()==='') syncSieveFromUW(true); });
   });
   box.querySelectorAll('.sv-meta').forEach(inp=>{
     inp.addEventListener('change', e=>{
@@ -3255,7 +3269,7 @@ function bootApp(){
   document.getElementById('filterUW').addEventListener('input', renderUW);
   document.getElementById('filterSV').addEventListener('input', renderSieve);
   document.getElementById('filterSieve').addEventListener('change', renderSieve);
-  document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false);
+  document.getElementById('syncSV').onclick = ()=>syncSieveFromUW(false,true);
   document.getElementById('addUW').onclick = ()=>{ UW.push({no:'',depth:'',D:'',H:'',soilMold:'',mold:'',cont:'',a:'',b:'',c:''}); renderUW(); };
   document.getElementById('delUW').onclick = ()=>{ if(UW.length>1){UW.pop(); renderUW();} };
   document.getElementById('addSV').onclick = ()=>{ SV.push({no:'',dish:'',depth:'',a:null,b:null,c:null,f:{}}); renderSieve(); };
