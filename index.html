@@ -868,7 +868,8 @@ function syncSieveFromUW(silent, force){
   SV.forEach(s=>{
     const sk=numKey(s.no);
     const dk=norm(s.dish);
-    let src = UW.find(u=>dk && norm(u.cont)===dk);
+    const byDish = dk ? UW.filter(u=>norm(u.cont)===dk) : [];
+    let src = byDish.length>1 && sk ? (byDish.find(u=>numKey(u.no)===sk) || byDish[0]) : byDish[0];
     if(!src && sk) src = UW.find(u=>numKey(u.no)===sk);
     if(src){
       let changed=false;
@@ -2289,11 +2290,16 @@ Read handwriting exactly. Do not calculate. Blank/unreadable = null. Do not inve
     const isBlankUW = u => !u.no && !u.cont && !u.depth && !u.D && !u.H && !u.soilMold && !u.mold &&
       (u.a===''||u.a===null||u.a===undefined) && (u.b===''||u.b===null||u.b===undefined) && (u.c===''||u.c===null||u.c===undefined);
     const blankQueue = UW.map((u,i)=>isBlankUW(u)?i:-1).filter(i=>i>=0);
+    // จับคู่ด้วย "เลขตัวอย่าง" เป็นหลัก (Container No. ซ้ำกันได้ เช่น B-58 ใช้ 2 ตัวอย่าง)
+    // และห้ามแถวเดียวถูกใช้ซ้ำภายในการอ่านรอบเดียว ไม่เช่นนั้นตัวอย่างหลังจะทับตัวอย่างก่อนหน้า
+    const usedIdx=new Set();
+    const tk=v=>String(v??'').trim().toUpperCase().replace(/\s+/g,'');
     arr.forEach(item=>{
-      let idx = UW.findIndex(u=>
-        (item.cont && u.cont && String(u.cont).trim()===String(item.cont).trim()) ||
-        (item.no && u.no && String(u.no).trim()===String(item.no).trim()));
-      if(idx<0 && blankQueue.length) idx = blankQueue.shift();
+      let idx = -1;
+      if(tk(item.no)) idx = UW.findIndex((u,i)=>!usedIdx.has(i) && tk(u.no)===tk(item.no));
+      if(idx<0 && !tk(item.no) && tk(item.cont)) idx = UW.findIndex((u,i)=>!usedIdx.has(i) && tk(u.cont)===tk(item.cont));
+      if(idx<0){ while(blankQueue.length && usedIdx.has(blankQueue[0])) blankQueue.shift(); if(blankQueue.length) idx = blankQueue.shift(); }
+      if(idx>=0) usedIdx.add(idx); else usedIdx.add(UW.length);
       const merged = {
         no:item.no ?? (idx>=0?UW[idx].no:String(UW.length+1)),
         depth:item.depth ?? (idx>=0?UW[idx].depth:''),
