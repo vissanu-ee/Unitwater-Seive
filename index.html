@@ -1265,7 +1265,7 @@ function renderSieve(){
       const title = st.invalid ? `ตรวจสอบ % Finer: ${st.reasons.join(', ')}` : '';
       return `<tr class="border-b border-slate-100">
         <td class="px-2 py-1.5 font-semibold text-slate-600">${r.sieve}</td>
-        <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${r.sieve}" value="${showH(s.f[r.sieve])}"></td>
+        <td class="tbl-cell input-cell px-1"><input data-sv="${idx}" data-sieve="${escHtml(r.sieve)}" value="${showH(s.f[r.sieve])}"></td>
         <td class="px-2 py-1.5 text-center text-slate-500">${show(r.g)}</td>
         <td class="px-2 py-1.5 text-center calc-cell">${show(r.h)}</td>
         <td class="px-2 py-1.5 text-center calc-cell font-bold${cls}" title="${title}">${show(r.i)}</td>
@@ -1308,7 +1308,7 @@ function renderSieve(){
     inp.addEventListener('input', e=>{
       SV[e.target.dataset.sv].f[e.target.dataset.sieve] = e.target.value;
       renderSieve(); buildChart();
-      const sel = box.querySelector(`input[data-sv="${e.target.dataset.sv}"][data-sieve="${e.target.dataset.sieve}"]`);
+      const sel = box.querySelector(`input[data-sv="${e.target.dataset.sv}"][data-sieve="${CSS.escape(e.target.dataset.sieve)}"]`);
       if(sel){ sel.focus(); sel.setSelectionRange(sel.value.length, sel.value.length); }
     });
   });
