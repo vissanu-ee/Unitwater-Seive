@@ -2215,6 +2215,11 @@ const ATT_SCHEMA = {
     adjWater:{type:"NUMBER", nullable:true}
   }, required:["no","blows","canNo","a","b","c"]}
 };
+const ATT_SCHEMA_LOWER = {
+  type:"ARRAY",
+  description:"One object per sample column of the LOWER table that contains any handwritten data, left-to-right. Skip completely blank columns. Return [] if the whole lower table is blank.",
+  items:ATT_SCHEMA.items
+};
 const UCT_SCHEMA = {
   type:"OBJECT", properties:{
     no:{type:"STRING", nullable:true}, depth:{type:"STRING", nullable:true},
@@ -2579,30 +2584,55 @@ CRITICAL COLUMN ALIGNMENT:
     const arr=await callGemini([{data:crop}],prompt,1800,ATT_SCHEMA,'Atterberg',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK,CFG.GEM_FALLBACK]);
     if(!Array.isArray(arr)||!arr.length) throw new Error('ไม่พบข้อมูลตัวอย่างในรูปภาพ');
 
+    // ตารางล่าง (ตัวอย่างที่ 13 เป็นต้นไป) — อ่านแยกอีกครั้ง ถ้าอ่านไม่สำเร็จจะไม่กระทบผลของตารางบน
+    let lower=[], lowerErr='';
+    try{
+      const cropLow=await cropImageRectData(src,probe.w*0.075,probe.h*0.52,probe.w*0.865,probe.h*0.33,1800);
+      const promptLow=`This image is the LOWER Atterberg's Limits table of the same sheet. It continues the sample numbering of the upper table (for example 13, 14, ...).
+Return ONE JSON object for EACH sample column that contains any handwritten value, in left-to-right order. Skip columns that are completely blank. If the whole table is blank, return [].
+Map ONLY values in the SAME vertical column:
+- no = Sample No. row exactly as written (e.g. 13)
+- depth = Depth M. row
+- testType = Type of test row
+- blows = Number of Blows row (preserve NP literally)
+- canNo = Can No. row
+- a = Wt. Can (gm.)
+- b = Can+Wet soil (gm.)
+- c = Can+Dry soil (gm.)
+Blank cells are null. Do not invent values. Do not calculate. Return JSON only.`;
+      const r=await callGemini([{data:cropLow}],promptLow,1800,ATT_SCHEMA_LOWER,'Atterberg (ตารางล่าง)',[CFG.GEM_PRIMARY,CFG.GEM_STABLE_FALLBACK,CFG.GEM_FALLBACK]);
+      if(Array.isArray(r)) lower=r;
+    }catch(e){ if(e.message==='NO_KEY') throw e; lowerErr=String(e.message||e); }
+    const hasData=it=>it&&typeof it==='object'&&[it.blows,it.canNo,it.a,it.b,it.c].some(v=>v!==null&&v!==undefined&&String(v).trim()!=='');
+    lower=lower.filter(hasData).map((it,i)=>{
+      const n=String(it.no??'').trim();
+      return {...it, no: /^\d+$/.test(n) ? `SS-${Number(n)}` : (n || `SS-${13+i}`)};
+    });
+
     const normNo=v=>String(v??'').trim().toUpperCase().replace(/\s+/g,'');
-    const keyNo=v=>{const n=normNo(v);const m=n.match(/(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)(\d+)$/);return m?`N${Number(m[1])}`:n;};
+    const keyNo=v=>{const n=normNo(v);const m=n.match(/^(?:SS[-_]?|SAMPLE[-_]?|NO[-_]?)?(\d+)$/);return m?`N${Number(m[1])}`:n;};
     const byKey=new Map();
-    arr.forEach((item,i)=>{
+    [...arr,...lower].forEach((item,i)=>{
       if(!item||typeof item!=='object') return;
       const k=keyNo(item.no||`SS-${i+1}`);
       if(!k) return;
+      if(byKey.has(k) && !hasData(item)) return;
       byKey.set(k,{no:item.no||`SS-${i+1}`,depth:item.depth??'',testType:item.testType??'',canNo:item.canNo??'',blows:item.blows??'',a:item.a??'',b:item.b??'',c:item.c??'',adjWater:item.adjWater??''});
     });
 
     // Replace old OCR/manual sample rows with exactly the sample columns present
     // in this uploaded table; do not retain stale rows from an earlier run.
     const ordered=[];
-    for(let i=1;i<=12;i++){
-      const item=byKey.get(`N${i}`);
-      if(item) ordered.push(item);
-    }
-    // If the model used a non-standard sample label, retain it after SS-1..SS-12.
-    byKey.forEach((item,k)=>{if(!/^N(?:[1-9]|1[0-2])$/.test(k)) ordered.push(item);});
+    // เรียงตามเลขตัวอย่าง (ตารางบน 1-12 + ตารางล่าง 13 เป็นต้นไป) ชื่อที่ไม่ใช่ตัวเลขต่อท้าย
+    const numKeys=[...byKey.keys()].filter(k=>/^N\d+$/.test(k)).sort((x,y)=>Number(x.slice(1))-Number(y.slice(1)));
+    numKeys.forEach(k=>ordered.push(byKey.get(k)));
+    byKey.forEach((item,k)=>{if(!/^N\d+$/.test(k)) ordered.push(item);});
     ATT=ordered.length?ordered:[{no:'',depth:'',testType:'',canNo:'',blows:'',a:'',b:'',c:'',adjWater:''}];
 
     renderATT(); scheduleSaveState();
     Swal.close();
-    toast(gemUsageToast(arr.__gemUsage,`อ่านข้อมูล Atterberg สำเร็จ ${ATT.length} ตัวอย่าง`),'success');
+    toast(gemUsageToast(arr.__gemUsage,`อ่านข้อมูล Atterberg สำเร็จ ${ATT.length} ตัวอย่าง`+(lower.length?` (ตารางล่าง ${lower.length})`:'')),'success');
+    if(lowerErr) toast('อ่านตารางล่างไม่สำเร็จ: '+lowerErr,'warning');
   }catch(err){
     if(err.message==='NO_KEY') return openSettings('กรุณาใส่ Gemini API Key ก่อนใช้งานปุ่ม AI OCR');
     Swal.fire({icon:'error',title:'อ่านค่า Atterberg ไม่สำเร็จ',text:String(err.message||err)});
